@@ -3,8 +3,12 @@ Arooohi Backend — Peak Hour Surge Indicator Routes
 Feature 13: Peak Hour Surge Indicator  (Ornab)
 Surge multiplier = seeded hourly demand baseline blended with live ride volume.
 Blend makes it dynamic (FR-9) while keeping a meaningful value in a fresh demo.
+
+Note: the seed schedule is authored in Bangladesh local time (UTC+6), so the
+current-hour lookup uses Asia/Dhaka, not UTC.
 """
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends
 from app.database import get_db
 from app.auth import get_current_user_id
@@ -15,6 +19,7 @@ MIN_SURGE = 1.0
 MAX_SURGE = 2.0
 ACTIVE_RIDE_BUMP = 0.1   # per active ride (capped)
 MAX_ACTIVE_FOR_BUMP = 5  # cap bump at 5 active rides
+BD_TZ = ZoneInfo("Asia/Dhaka")
 
 
 def _compute_multiplier(demand: float, active_rides: int) -> float:
@@ -35,7 +40,7 @@ def _label_for(multiplier: float) -> str:
 def compute_current_multiplier(conn) -> tuple:
     """Shared helper: (multiplier, demand, active_rides) at the current hour.
     Used by /surge/current and by ride creation (cost splitter needs the surge)."""
-    hour = datetime.utcnow().hour
+    hour = datetime.now(BD_TZ).hour
     row = conn.execute("SELECT demand FROM surge_config WHERE hour = ?", (hour,)).fetchone()
     active = conn.execute("SELECT COUNT(*) AS c FROM rides WHERE status = 'active'").fetchone()["c"]
     demand = row["demand"] if row else 1.0
@@ -50,7 +55,7 @@ def get_current_surge(user_id: str = Depends(get_current_user_id)):
     multiplier, demand, active = compute_current_multiplier(conn)
     conn.close()
     return {
-        "hour": datetime.utcnow().hour,
+        "hour": datetime.now(BD_TZ).hour,
         "demand": demand,
         "active_rides": active,
         "multiplier": multiplier,

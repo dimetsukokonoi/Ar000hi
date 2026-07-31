@@ -34,24 +34,40 @@ export default function RideChatPage() {
       .catch(err => console.error("Failed to load chat history:", err));
   }, [token, rideId]);
 
-  // WebSocket connection (connect once per ride)
+  // WebSocket connection (connect once per ride, auto-reconnect on drop)
   useEffect(() => {
     if (!token) return;
-    const ws = new WebSocket(`${WS}/chat/${rideId}?token=${token}`);
-    wsRef.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        setMessages(prev => [...prev, msg]);
-      } catch (err) {
-        console.error("Bad WS message:", err);
-      }
-    };
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
+    let closedByUser = false;
+    let retryTimer: NodeJS.Timeout | null = null;
 
-    return () => { ws.close(); };
+    const connect = () => {
+      const ws = new WebSocket(`${WS}/chat/${rideId}?token=${token}`);
+      wsRef.current = ws;
+      ws.onopen = () => setConnected(true);
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          setMessages(prev => [...prev, msg]);
+        } catch (err) {
+          console.error("Bad WS message:", err);
+        }
+      };
+      ws.onclose = (ev) => {
+        setConnected(false);
+        if (!closedByUser && ev.code !== 4401 && ev.code !== 4403) {
+          retryTimer = setTimeout(connect, 3000);
+        }
+      };
+      ws.onerror = () => ws.close();
+    };
+
+    connect();
+
+    return () => {
+      closedByUser = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      wsRef.current?.close();
+    };
   }, [rideId, token]);
 
   useEffect(() => {

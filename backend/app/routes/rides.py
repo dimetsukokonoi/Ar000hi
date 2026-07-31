@@ -277,6 +277,15 @@ def get_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
         conn.close()
         raise HTTPException(status_code=404, detail="Ride not found")
 
+    if ride["driver_id"] != user_id:
+        participant = conn.execute(
+            "SELECT id FROM ride_passengers WHERE ride_id = ? AND passenger_id = ?",
+            (ride_id, user_id)
+        ).fetchone()
+        if not participant:
+            conn.close()
+            raise HTTPException(status_code=403, detail="Only ride participants can view this ride")
+
     passengers = conn.execute(
         """SELECT rp.id, rp.passenger_id, rp.seats, rp.status, u.name AS passenger_name
            FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
