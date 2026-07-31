@@ -3,11 +3,19 @@ import { useState, useEffect } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface ContactInfo {
+  id: string;
+  contact_name: string;
+  contact_phone: string;
+  contact_email: string;
+  created_at?: string;
+}
+
 export default function TrustedContactsPage() {
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<ContactInfo[]>([]);
   const [form, setForm] = useState({ contact_name: "", contact_phone: "", contact_email: "" });
   const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -16,7 +24,6 @@ export default function TrustedContactsPage() {
   useEffect(() => {
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    setLoading(true);
     fetch(`${API}/contacts`, { headers })
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setContacts(data); })

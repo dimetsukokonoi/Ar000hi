@@ -5,24 +5,40 @@ import { useParams } from "next/navigation";
 const API = "http://localhost:8000/api";
 const WS = "ws://localhost:8000/ws";
 
+interface ChatMessage {
+  id: string;
+  ride_id: string;
+  sender_id: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+}
+
+interface MeInfo {
+  id: string;
+  name: string;
+}
+
 // Ornab: Ride Chat (Feature 15) — real-time via WebSocket, persisted to backend
 export default function RideChatPage() {
   const params = useParams<{ rideId: string }>();
   const rideId = params.rideId;
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
-  const [me, setMe] = useState<any>(null);
+  const [me] = useState<MeInfo | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("user");
+      return raw ? (JSON.parse(raw) as MeInfo) : null;
+    } catch {
+      return null;
+    }
+  });
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const userData = localStorage.getItem("user");
-    if (userData) setMe(JSON.parse(userData));
-  }, []);
 
   // Load history once
   useEffect(() => {

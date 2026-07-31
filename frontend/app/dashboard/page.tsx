@@ -1,21 +1,41 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 
 const API = "http://localhost:8000/api";
+
+interface SessionInfo {
+  session_id: string;
+  id?: string;
+  share_url?: string;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+interface TrackingPoint {
+  lat: number;
+  lng: number;
+  created_at: string;
+}
+
+interface SosResult {
+  location?: { lat: number; lng: number };
+  contacts_notified?: { name: string; phone: string }[];
+  message?: string;
+}
 
 // Dynamically import the map to avoid SSR issues with leaflet
 const TrackingMap = dynamic(() => import("@/components/TrackingMap"), { ssr: false, loading: () => <div style={{ height: 500, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", borderRadius: "var(--radius-lg)" }}><span className="spinner spinner-lg" /></div> });
 
 export default function DashboardPage() {
-  const [session, setSession] = useState<any>(null);
-  const [points, setPoints] = useState<any[]>([]);
-  const [currentPos, setCurrentPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [points, setPoints] = useState<TrackingPoint[]>([]);
+  const [currentPos, setCurrentPos] = useState<{ lat: number; lng: number }>({ lat: 23.7781, lng: 90.4042 });
   const [tracking, setTracking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sosModal, setSosModal] = useState(false);
   const [sosSent, setSosSent] = useState(false);
-  const [sosResult, setSosResult] = useState<any>(null);
+  const [sosResult, setSosResult] = useState<SosResult | null>(null);
   const watchId = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -27,17 +47,16 @@ export default function DashboardPage() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setCurrentPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => setCurrentPos({ lat: 23.7781, lng: 90.4042 }) // BRACU default
+        () => {}
       );
-    } else {
-      setCurrentPos({ lat: 23.7781, lng: 90.4042 });
     }
   }, []);
 
   // Check for existing active session
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/tracking/active`, { headers }).then(r => r.json()).then(data => {
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/tracking/active`, { headers: h }).then(r => r.json()).then(data => {
       if (data.session) setSession(data.session);
     }).catch(() => {});
   }, [token]);
@@ -79,9 +98,7 @@ export default function DashboardPage() {
       }
 
       // Also simulate movement for demo (in case GPS doesn't update frequently)
-      let step = 0;
       intervalRef.current = setInterval(() => {
-        step++;
         setCurrentPos(prev => {
           if (!prev) return prev;
           const newPos = {
@@ -245,7 +262,7 @@ export default function DashboardPage() {
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginBottom: 8 }}>📍 Location shared: {sosResult.location?.lat.toFixed(4)}, {sosResult.location?.lng.toFixed(4)}</div>
                 <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: 8 }}>Contacts notified:</div>
-                {sosResult.contacts_notified?.map((c: any, i: number) => (
+                {sosResult.contacts_notified?.map((c, i) => (
                   <div key={i} style={{ padding: "8px 12px", background: "var(--surface)", borderRadius: "var(--radius-md)", marginBottom: 6, fontSize: "0.8rem" }}>
                     <strong>{c.name}</strong> — {c.phone}
                   </div>

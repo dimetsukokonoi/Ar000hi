@@ -3,10 +3,27 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 
+interface UserInfo {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  gender?: string;
+  phone?: string;
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<any>(null);
+  const [user] = useState<UserInfo | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("user");
+      return raw ? (JSON.parse(raw) as UserInfo) : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -14,7 +31,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!token || !userData) { router.push("/login"); return; }
     const parsed = JSON.parse(userData);
     if (parsed.role !== "admin") { router.push("/dashboard"); return; }
-    setUser(parsed);
   }, [router]);
 
   const handleLogout = () => {

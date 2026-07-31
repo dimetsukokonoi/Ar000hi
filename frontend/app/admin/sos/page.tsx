@@ -1,19 +1,32 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface SosAlert {
+  id: string;
+  user_name: string;
+  user_email: string;
+  user_phone: string;
+  status: string;
+  lat: number;
+  lng: number;
+  created_at: string;
+  contacts_notified?: { name: string; phone: string }[];
+}
+
 export default function AdminSOSPage() {
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<SosAlert[]>([]);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  const fetchAlerts = () => {
-    fetch(`${API}/sos/alerts`, { headers }).then(r => r.json()).then(data => setAlerts(Array.isArray(data) ? data : [])).catch(() => {});
-  };
+  const fetchAlerts = useCallback(() => {
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/sos/alerts`, { headers: h }).then(r => r.json()).then(data => setAlerts(Array.isArray(data) ? data : [])).catch(() => {});
+  }, [token]);
 
-  useEffect(() => { fetchAlerts(); }, [token]);
+  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
   const resolveAlert = async (id: string, status: string) => {
     await fetch(`${API}/sos/${id}/resolve`, { method: "PATCH", headers, body: JSON.stringify({ status }) });
@@ -60,11 +73,11 @@ export default function AdminSOSPage() {
             </div>
 
             {/* Contacts notified */}
-            {a.contacts_notified?.length > 0 && (
+            {(a.contacts_notified?.length ?? 0) > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: 6 }}>Contacts Notified:</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {a.contacts_notified.map((c: any, i: number) => (
+                  {a.contacts_notified?.map((c, i) => (
                     <span key={i} className="badge badge-info" style={{ textTransform: "none" }}>
                       {c.name} — {c.phone}
                     </span>

@@ -1,30 +1,45 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
 const API = "http://localhost:8000/api";
+
+interface TrackingPoint {
+  lat: number;
+  lng: number;
+  created_at: string;
+}
+
+interface TrackingData {
+  is_active: boolean;
+  user_name?: string;
+  started_at?: string;
+  points: TrackingPoint[];
+  latest?: { lat: number; lng: number };
+}
+
 const TrackingMap = dynamic(() => import("@/components/TrackingMap"), { ssr: false, loading: () => <div style={{ height: "80vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)" }}><span className="spinner spinner-lg" /></div> });
 
 export default function SharedTrackingPage() {
   const params = useParams();
   const token = params.token as string;
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<TrackingData | null>(null);
   const [error, setError] = useState("");
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     fetch(`${API}/tracking/share/${token}`)
       .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
       .then(setData)
       .catch(() => setError("Tracking session not found or has ended."));
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
-  }, [token]);
+  }, [fetchData]);
 
   if (error) {
     return (
@@ -65,7 +80,7 @@ export default function SharedTrackingPage() {
         <div>
           <div style={{ fontWeight: 600 }}>{data.user_name}</div>
           <div style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
-            Started {new Date(data.started_at).toLocaleTimeString()} • {data.points.length} points tracked
+            Started {data.started_at ? new Date(data.started_at).toLocaleTimeString() : "—"} • {data.points.length} points tracked
           </div>
         </div>
       </div>

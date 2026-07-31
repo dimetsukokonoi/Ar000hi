@@ -35,8 +35,8 @@ export default function RegisterPage() {
       localStorage.setItem("pending_email", form.email);
       if (data.otp_hint) localStorage.setItem("otp_hint", data.otp_hint);
       router.push("/verify");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

@@ -62,17 +62,20 @@ async def ride_chat_ws(websocket: WebSocket, ride_id: str):
     try:
         payload = decode_token(token)
     except Exception:
+        await websocket.accept()
         await websocket.close(code=4401)
         return
 
     user_id = payload.get("sub")
     if not user_id:
+        await websocket.accept()
         await websocket.close(code=4401)
         return
 
     conn = get_db()
     if not _is_participant(conn, ride_id, user_id):
         conn.close()
+        await websocket.accept()
         await websocket.close(code=4403)
         return
     user = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()

@@ -3,9 +3,20 @@ import { useState, useEffect } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface DriverProfile {
+  vehicle_type?: string;
+  vehicle_model?: string;
+  vehicle_plate?: string;
+  verification_status?: string;
+  admin_notes?: string;
+  nid_document_url?: string;
+  license_document_url?: string;
+  vehicle_registration_url?: string;
+}
+
 export default function DriverVerificationPage() {
   const [status, setStatus] = useState<string>("loading");
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [form, setForm] = useState({ vehicle_type: "bike", vehicle_model: "", vehicle_plate: "" });
   const [files, setFiles] = useState<{ nid: File | null; license: File | null; vehicle: File | null }>({ nid: null, license: null, vehicle: null });
   const [loading, setLoading] = useState(false);
@@ -51,8 +62,8 @@ export default function DriverVerificationPage() {
       if (!res.ok) throw new Error(data.detail || "Submission failed");
       setMessage(data.message);
       setStatus("pending");
-    } catch (err: any) {
-      setMessage(err.message);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -94,7 +105,7 @@ export default function DriverVerificationPage() {
       )}
 
       {/* Submission Form — show if not submitted or rejected */}
-      {(status === "not_submitted" || status === "rejected" || status === "loading") && status !== "approved" && (
+      {(status === "not_submitted" || status === "rejected" || status === "loading") && (
         <form onSubmit={handleSubmit}>
           {message && (
             <div style={{ padding: "12px 16px", background: message.includes("success") ? "var(--success-muted)" : "var(--danger-muted)", borderRadius: "var(--radius-md)", color: message.includes("success") ? "var(--success)" : "var(--danger)", fontSize: "0.85rem", marginBottom: 20 }}>

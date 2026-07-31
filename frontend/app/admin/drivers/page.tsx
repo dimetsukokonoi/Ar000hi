@@ -1,20 +1,37 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface DriverApp {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  gender: string;
+  verification_status: string;
+  vehicle_type: string;
+  vehicle_model: string;
+  vehicle_plate: string;
+  nid_document_url: string;
+  license_document_url: string;
+  vehicle_registration_url: string;
+  admin_notes?: string;
+}
+
 export default function AdminDriversPage() {
-  const [drivers, setDrivers] = useState<any[]>([]);
+  const [drivers, setDrivers] = useState<DriverApp[]>([]);
   const [filter, setFilter] = useState("all");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  const fetchDrivers = () => {
-    fetch(`${API}/drivers/pending`, { headers }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data : [])).catch(() => {});
-  };
+  const fetchDrivers = useCallback(() => {
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/drivers/pending`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data : [])).catch(() => {});
+  }, [token]);
 
-  useEffect(() => { fetchDrivers(); }, [token]);
+  useEffect(() => { fetchDrivers(); }, [fetchDrivers]);
 
   const reviewDriver = async (profileId: string, status: string, notes: string = "") => {
     await fetch(`${API}/drivers/${profileId}/review`, {

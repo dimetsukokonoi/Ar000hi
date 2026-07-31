@@ -5,12 +5,56 @@ import Link from "next/link";
 const API = "http://localhost:8000/api";
 const HOTSPOTS = ["Gate 1", "Gate 2", "Gate 3", "Library", "Cafeteria", "UB Building", "Residential", "Mohakhali", "Banani", "Gulshan"];
 
+interface RideInfo {
+  id: string;
+  driver_id: string;
+  driver_name: string;
+  source: string;
+  destination: string;
+  status: string;
+  distance_km: number | null;
+  base_fare: number;
+  surge_multiplier: number;
+  scheduled_at?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  created_at?: string | null;
+}
+
+interface SurgeInfo {
+  hour: number;
+  demand: number;
+  active_rides: number;
+  multiplier: number;
+  label: string;
+  message: string;
+}
+
+interface SplitInfo {
+  ride_id: string;
+  source: string;
+  destination: string;
+  base_fare: number;
+  surge_multiplier: number;
+  total: number;
+  passenger_count: number;
+  per_person: number | null;
+  breakdown: { passenger: string; share: number }[];
+}
+
+const BADGES: Record<string, string> = {
+  "Peak": "badge-danger",
+  "High": "badge-warning",
+  "Elevated": "badge-info",
+  "Normal": "badge-success",
+};
+
 // Ornab: Rides page — surge indicator + ride create/join + cost splitter + chat entry
 export default function RidesPage() {
-  const [surge, setSurge] = useState<any>(null);
-  const [rides, setRides] = useState<any>({ mine: [], available: [] });
+  const [surge, setSurge] = useState<SurgeInfo | null>(null);
+  const [rides, setRides] = useState<{ mine: RideInfo[]; available: RideInfo[] }>({ mine: [], available: [] });
   const [form, setForm] = useState({ source: "", destination: "", base_fare: "" });
-  const [split, setSplit] = useState<Record<string, any>>({});
+  const [split, setSplit] = useState<Record<string, SplitInfo>>({});
   const [loading, setLoading] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -84,11 +128,9 @@ export default function RidesPage() {
     }
   };
 
-  const surgeBadge = surge
-    ? ({ "Peak": "badge-danger", "High": "badge-warning", "Elevated": "badge-info", "Normal": "badge-success" }[surge.label] || "badge-success")
-    : "badge-success";
+  const surgeBadge = surge ? BADGES[surge.label] || "badge-success" : "badge-success";
 
-  const renderRideCard = (ride: any, mine: boolean) => {
+  const renderRideCard = (ride: RideInfo, mine: boolean) => {
     const s = split[ride.id];
     const chatOpen = ride.status === "active" || ride.status === "scheduled";
     return (
@@ -147,7 +189,7 @@ export default function RidesPage() {
             </div>
             {s.breakdown.length > 0 && (
               <div style={{ marginTop: 8, fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
-                {s.breakdown.map((b: any, i: number) => (
+                {s.breakdown.map((b, i) => (
                   <div key={i}>• {b.passenger}: ৳{b.share}</div>
                 ))}
               </div>

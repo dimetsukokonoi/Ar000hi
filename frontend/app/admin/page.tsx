@@ -3,19 +3,44 @@ import { useEffect, useState } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface ComplaintStats {
+  total: number;
+  open: number;
+  under_review: number;
+  resolved: number;
+}
+
+interface SosAlert {
+  id: string;
+  user_name: string;
+  created_at: string;
+  lat: number;
+  lng: number;
+  status: string;
+}
+
+interface DriverSummary {
+  id: string;
+  name: string;
+  email: string;
+  vehicle_type: string;
+  vehicle_model: string;
+  verification_status: string;
+}
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<any>(null);
-  const [sosAlerts, setSosAlerts] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
+  const [stats, setStats] = useState<ComplaintStats | null>(null);
+  const [sosAlerts, setSosAlerts] = useState<SosAlert[]>([]);
+  const [drivers, setDrivers] = useState<DriverSummary[]>([]);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/complaints/stats`, { headers }).then(r => r.json()).then(setStats).catch(() => {});
-    fetch(`${API}/sos/alerts`, { headers }).then(r => r.json()).then(data => setSosAlerts(Array.isArray(data) ? data.slice(0, 5) : [])).catch(() => {});
-    fetch(`${API}/drivers/pending`, { headers }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data.filter((d: any) => d.verification_status === "pending") : [])).catch(() => {});
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/complaints/stats`, { headers: h }).then(r => r.json()).then(setStats).catch(() => {});
+    fetch(`${API}/sos/alerts`, { headers: h }).then(r => r.json()).then(data => setSosAlerts(Array.isArray(data) ? data.slice(0, 5) : [])).catch(() => {});
+    fetch(`${API}/drivers/pending`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data.filter((d: DriverSummary) => d.verification_status === "pending") : [])).catch(() => {});
   }, [token]);
 
   return (

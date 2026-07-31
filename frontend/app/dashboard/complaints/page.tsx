@@ -1,10 +1,20 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface Complaint {
+  id: string;
+  category: string;
+  subject: string;
+  status: string;
+  created_at: string;
+  description: string;
+  admin_notes?: string;
+}
+
 export default function ComplaintsPage() {
-  const [complaints, setComplaints] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ category: "misconduct", subject: "", description: "" });
   const [loading, setLoading] = useState(false);
@@ -13,12 +23,13 @@ export default function ComplaintsPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  const fetchComplaints = () => {
+  const fetchComplaints = useCallback(() => {
     if (!token) return;
-    fetch(`${API}/complaints/`, { headers }).then(r => r.json()).then(setComplaints).catch(() => {});
-  };
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/complaints/`, { headers: h }).then(r => r.json()).then(setComplaints).catch(() => {});
+  }, [token]);
 
-  useEffect(() => { fetchComplaints(); }, [token]);
+  useEffect(() => { fetchComplaints(); }, [fetchComplaints]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +43,8 @@ export default function ComplaintsPage() {
       setForm({ category: "misconduct", subject: "", description: "" });
       setShowForm(false);
       fetchComplaints();
-    } catch (err: any) {
-      setMessage(err.message);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

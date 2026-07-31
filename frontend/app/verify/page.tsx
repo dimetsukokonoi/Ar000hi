@@ -10,13 +10,17 @@ export default function VerifyPage() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [otpHint, setOtpHint] = useState("");
+  const [email] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("pending_email") || "";
+  });
+  const [otpHint, setOtpHint] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("otp_hint") || "";
+  });
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    setEmail(localStorage.getItem("pending_email") || "");
-    setOtpHint(localStorage.getItem("otp_hint") || "");
     inputRefs.current[0]?.focus();
   }, []);
 
@@ -65,8 +69,8 @@ export default function VerifyPage() {
       localStorage.removeItem("pending_email");
       localStorage.removeItem("otp_hint");
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

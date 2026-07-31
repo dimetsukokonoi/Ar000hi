@@ -1,10 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface Complaint {
+  id: string;
+  category: string;
+  subject: string;
+  status: string;
+  reporter_name: string;
+  reporter_email: string;
+  created_at: string;
+  description: string;
+  admin_notes?: string;
+}
+
 export default function AdminComplaintsPage() {
-  const [complaints, setComplaints] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
@@ -12,11 +24,12 @@ export default function AdminComplaintsPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  const fetchComplaints = () => {
-    fetch(`${API}/complaints/`, { headers }).then(r => r.json()).then(data => setComplaints(Array.isArray(data) ? data : [])).catch(() => {});
-  };
+  const fetchComplaints = useCallback(() => {
+    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    fetch(`${API}/complaints/`, { headers: h }).then(r => r.json()).then(data => setComplaints(Array.isArray(data) ? data : [])).catch(() => {});
+  }, [token]);
 
-  useEffect(() => { fetchComplaints(); }, [token]);
+  useEffect(() => { fetchComplaints(); }, [fetchComplaints]);
 
   const updateComplaint = async (id: string, status: string) => {
     await fetch(`${API}/complaints/${id}`, {

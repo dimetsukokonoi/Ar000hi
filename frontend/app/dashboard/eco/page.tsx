@@ -3,9 +3,28 @@ import { useState, useEffect } from "react";
 
 const API = "http://localhost:8000/api";
 
+interface EcoRide {
+  ride_id: string;
+  distance_km: number;
+  occupancy: number;
+  solo_kg: number;
+  shared_kg: number;
+  saved_kg: number;
+}
+
+interface EcoStats {
+  trips: number;
+  total_km: number;
+  total_solo_kg: number;
+  total_saved_kg: number;
+  trees_equivalent: number;
+  fuel_saved_l: number;
+  rides: EcoRide[];
+}
+
 // Ornab: Eco/Footprint Tracker (Feature 20) — CO2 saved by carpooling vs solo rides
 export default function EcoTrackerPage() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<EcoStats | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
