@@ -10,29 +10,48 @@ export default function TrustedContactsPage() {
   const [loading, setLoading] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  // Note: We'll use a simple local storage approach for contacts since this is a supporting feature
+  // Ornab: contacts now persist in the backend trusted_contacts table so the
+  // SOS alert flow (which reads from the DB) actually notifies these contacts.
   useEffect(() => {
-    const saved = localStorage.getItem("trusted_contacts");
-    if (saved) setContacts(JSON.parse(saved));
-  }, []);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    setLoading(true);
+    fetch(`${API}/contacts`, { headers })
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setContacts(data); })
+      .catch(err => console.error("Failed to load contacts:", err))
+      .finally(() => setLoading(false));
+  }, [token]);
 
-  const saveContacts = (newContacts: any[]) => {
-    setContacts(newContacts);
-    localStorage.setItem("trusted_contacts", JSON.stringify(newContacts));
-  };
-
-  const addContact = (e: React.FormEvent) => {
+  const addContact = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newContact = { ...form, id: Date.now().toString(), created_at: new Date().toISOString() };
-    saveContacts([...contacts, newContact]);
-    setForm({ contact_name: "", contact_phone: "", contact_email: "" });
-    setShowForm(false);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    try {
+      const res = await fetch(`${API}/contacts`, { method: "POST", headers, body: JSON.stringify(form) });
+      const data = await res.json();
+      if (res.ok) {
+        setForm({ contact_name: "", contact_phone: "", contact_email: "" });
+        setShowForm(false);
+        setContacts(prev => [...prev, { ...data.contact }]);
+      } else {
+        alert(data.detail || "Failed to add contact");
+      }
+    } catch (err) {
+      console.error("Add contact failed:", err);
+    }
   };
 
-  const removeContact = (id: string) => {
-    saveContacts(contacts.filter(c => c.id !== id));
+  const removeContact = async (id: string) => {
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    try {
+      await fetch(`${API}/contacts/${id}`, { method: "DELETE", headers });
+      setContacts(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      console.error("Remove contact failed:", err);
+    }
   };
 
   return (
@@ -67,7 +86,9 @@ export default function TrustedContactsPage() {
         </div>
       )}
 
-      {contacts.length === 0 ? (
+      {loading ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: 48 }}><span className="spinner spinner-lg" /></div>
+      ) : contacts.length === 0 ? (
         <div style={{ textAlign: "center", padding: 48, color: "var(--text-tertiary)" }}>
           <div style={{ fontSize: "3rem", marginBottom: 16 }}>👥</div>
           <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>No trusted contacts</div>

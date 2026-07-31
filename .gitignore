@@ -1,0 +1,9 @@
+# Private dev-notes — never commit to GitHub
+.arooohi-dev/
+
+# Local backend virtualenv (Ornab) — never commit
+backend/.venv/
+
+# Python artifacts
+__pycache__/
+*.pyc

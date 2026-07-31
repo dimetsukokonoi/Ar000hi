@@ -110,7 +110,64 @@ def init_db():
             resolved_at TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        -- Ornab: rides core + Ornab's feature tables (cost splitter, surge, chat, eco)
+        CREATE TABLE IF NOT EXISTS rides (
+            id TEXT PRIMARY KEY,
+            driver_id TEXT NOT NULL REFERENCES users(id),
+            source TEXT NOT NULL,
+            destination TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'scheduled'
+                CHECK(status IN ('scheduled', 'active', 'completed', 'cancelled')),
+            distance_km REAL,
+            base_fare REAL NOT NULL,
+            surge_multiplier REAL NOT NULL DEFAULT 1.0,
+            scheduled_at TEXT,
+            started_at TEXT,
+            ended_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ride_passengers (
+            id TEXT PRIMARY KEY,
+            ride_id TEXT NOT NULL REFERENCES rides(id),
+            passenger_id TEXT NOT NULL REFERENCES users(id),
+            seats INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'requested'
+                CHECK(status IN ('requested', 'accepted', 'completed', 'cancelled')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id TEXT PRIMARY KEY,
+            ride_id TEXT NOT NULL REFERENCES rides(id),
+            sender_id TEXT NOT NULL REFERENCES users(id),
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS surge_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hour INTEGER NOT NULL UNIQUE,
+            demand REAL NOT NULL,
+            label TEXT NOT NULL
+        );
     """)
+    conn.commit()
+
+    # Ornab: seed 24-hour peak-hour surge baseline (hour, demand, label)
+    surge_seed = [
+        (0, 1.1, "Normal"), (1, 1.0, "Normal"), (2, 1.0, "Normal"), (3, 1.0, "Normal"),
+        (4, 1.0, "Normal"), (5, 1.1, "Normal"), (6, 1.2, "Elevated"), (7, 1.6, "Peak"),
+        (8, 1.8, "Peak"), (9, 1.5, "Peak"), (10, 1.2, "Elevated"), (11, 1.3, "High"),
+        (12, 1.4, "High"), (13, 1.3, "High"), (14, 1.1, "Normal"), (15, 1.1, "Normal"),
+        (16, 1.4, "High"), (17, 1.7, "Peak"), (18, 1.8, "Peak"), (19, 1.6, "Peak"),
+        (20, 1.4, "High"), (21, 1.3, "High"), (22, 1.2, "Elevated"), (23, 1.1, "Normal"),
+    ]
+    conn.executemany(
+        "INSERT OR IGNORE INTO surge_config (hour, demand, label) VALUES (?, ?, ?)",
+        surge_seed
+    )
     conn.commit()
 
     # Create default admin account

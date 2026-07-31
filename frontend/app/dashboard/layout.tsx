@@ -26,9 +26,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!user) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="spinner spinner-lg" /></div>;
 
+  // Ornab: added nav links for Rides (surge + cost splitter) and Eco Tracker
   const navLinks = [
     { href: "/dashboard", label: "🗺️  Map & Tracking", section: "ride" },
+    { href: "/dashboard/rides", label: "🚗  Rides & Surge", section: "ride" },
     { href: "/dashboard/driver", label: "🚗  Driver Verification", section: "ride" },
+    { href: "/dashboard/eco", label: "🌱  Eco Tracker", section: "ride" },
     { href: "/dashboard/complaints", label: "📋  Complaints", section: "safety" },
     { href: "/dashboard/contacts", label: "👥  Trusted Contacts", section: "safety" },
   ];

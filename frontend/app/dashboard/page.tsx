@@ -50,6 +50,15 @@ export default function DashboardPage() {
       setTracking(true);
       setPoints([]);
 
+      // Ornab (Feature 12): auto-share ride details to trusted contacts when tracking starts
+      if (data.share_url) {
+        fetch(`${API}/contacts/auto-share`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ share_url: data.share_url, session_id: data.session_id }),
+        }).catch(() => {});
+      }
+
       // Watch position and send updates
       if (navigator.geolocation) {
         watchId.current = navigator.geolocation.watchPosition(

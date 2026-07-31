@@ -13,6 +13,13 @@ from app.routes.tracking import router as tracking_router
 from app.routes.sos import router as sos_router
 from app.routes.complaints import router as complaints_router
 
+# Ornab: Trusted Contacts (#12), Rides core (#5 splitter), Surge (#13), Chat (#15), Eco (#20)
+from app.routes.contacts import router as contacts_router
+from app.routes.rides import router as rides_router
+from app.routes.surge import router as surge_router
+from app.routes.chat import router as chat_router
+from app.routes.eco import router as eco_router
+
 # Initialize database on startup
 init_db()
 
@@ -42,6 +49,13 @@ app.include_router(drivers_router, prefix="/api/drivers", tags=["Driver Verifica
 app.include_router(tracking_router, prefix="/api/tracking", tags=["GPS Tracking"])
 app.include_router(sos_router, prefix="/api/sos", tags=["SOS Alerts"])
 app.include_router(complaints_router, prefix="/api/complaints", tags=["Complaints"])
+
+# Ornab's modules
+app.include_router(contacts_router, prefix="/api/contacts", tags=["Trusted Contacts"])
+app.include_router(rides_router, prefix="/api/rides", tags=["Rides"])
+app.include_router(surge_router, prefix="/api/surge", tags=["Peak Hour Surge"])
+app.include_router(chat_router, prefix="/ws", tags=["Ride Chat"])
+app.include_router(eco_router, prefix="/api/eco", tags=["Eco Tracker"])
 
 
 @app.get("/api/health")
