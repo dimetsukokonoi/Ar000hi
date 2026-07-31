@@ -12,5 +12,15 @@
     "eco_tracker": true,
     "surge_indicator": true,
     "complaint_panel": true
+  },
+  "live_browser_test_2026_07_31": {
+    "harness": "/tmp/opencode/e2e/live-test.js",
+    "report": "/tmp/opencode/e2e/report.json",
+    "screenshots": "demo/live-test-screenshots/",
+    "passed": 45,
+    "failed": 0,
+    "bug_found_and_fixed": "chat spam-guard now closes WS 4429 (was HTTP 403)",
+    "repo_head": "e9d92cc",
+    "working_tree": "clean"
   }
 }

@@ -66,10 +66,25 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 
 ### Runtime state (checked this session)
 - Backend `:8000` (now with `--reload`) and frontend `:3000` both **running**.
-- `arooohi.db`: carries live user/test data (4 users, 2 rides, 1 contact/share,
-  2 tracking sessions, 1 SOS, 1 complaint) — kept for the demo.
-- `git status` — **dirty**: Session-9 changes uncommitted (backend + frontend + docs);
-  HEAD `e35812b`.
+- `arooohi.db`: carries live user/test data (driver approved, completed ride,
+  resolved SOS/complaint) — kept for the demo; pre-test backup at
+  `Misc./arooohi.db.backup-20260731-214145`.
+- `git status` — **clean**; all Session-9/10 changes committed at HEAD `e9d92cc`.
+
+### Live browser test (Session 10, Playwright)
+- Full end-to-end run of the live UI on both running servers: **45/45 passed,
+  0 failed** across auth, contacts, GPS tracking, SOS, rides, cost splitter,
+  surge, chat, driver verification, complaints, eco, and security gates.
+- One bug found + fixed during the run: chat spam-guard path closed with HTTP
+  403 instead of WS close code 4429 — now `await websocket.close(4429)` +
+  `break` (`routes/chat.py`), matching `API.md`.
+- Harness: `/tmp/opencode/e2e/live-test.js` (Playwright, `--headed`,
+  executablePath `/opt/helium/chrome`); machine-readable report at
+  `/tmp/opencode/e2e/report.json`; runtime logs `backend.log`/`frontend.log`.
+- 34 screenshots captured → committed to `demo/live-test-screenshots/`.
+- Test accounts (all `secret1/2/3`): `driver.live@g.bracu.ac.bd` (Test Driver),
+  `rider.live@g.bracu.ac.bd` (Rider Person), `intruder.live@g.bracu.ac.bd`
+  (Nosy User); admin `admin@g.bracu.ac.bd` / `admin123`.
 
 ## 5. Recent fixes (already applied)
 
@@ -77,6 +92,9 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 - **Ride detail permission leak**: `GET /api/rides/{id}` now 403s non-participants (`rides.py`).
 - **Chat WS close codes**: server now accepts-then-closes so 4401/4403 reach clients
   (was HTTP 403 → frontend retried forever) (`chat.py`).
+- **Chat spam-guard close (Session 10)**: rate-limit path now uses WS close
+  `4429` + `break` instead of HTTP 403, so the code the frontend/API.md expect
+  actually reaches the client (`chat.py`).
 - **Frontend reconnect**: auto-reconnect on WS drop, no retry on 4401/4403 (`chat/[rideId]/page.tsx`).
 - **TypeScript/lint cleanup**: `any` → interfaces across 17 frontend files.
 
@@ -122,8 +140,10 @@ features in §2.
 
 ## 8. Next actions (priority order)
 
-1. Ship the cheap wins: Female-Only Mode (#3), Earnings (#16), Ride History (#10).
-2. Commit the Session-9 changes (backend + frontend + docs) so the team can pull.
-3. Add committed pytest suite (regression script at `/tmp/opencode/test_backend.py`).
+1. ✅ (Done) Commit Session-9/10 changes — HEAD `e9d92cc`, working tree clean;
+   45/45 live browser tests pass, screenshots in `demo/live-test-screenshots/`.
+2. Ship the cheap wins: Female-Only Mode (#3), Earnings (#16), Ride History (#10).
+3. Add committed pytest suite (regression script at `/tmp/opencode/test_backend.py`)
+   and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`).
 4. Upgrade live tracking to WebSockets (NFR-1).
 5. Continue remaining features per `PROJECT_PLAN.md` §4.

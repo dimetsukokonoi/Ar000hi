@@ -97,9 +97,12 @@ Dependency-aware order (cheap → expensive, and what each unlocks):
 
 Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File references included.
 
-> **Status (2026-07-31, Session 9 hardening pass):** all 🔴 Security (§6.1) and
-> Correctness (§6.2) items are now FIXED ✅, as are most §6.3/§6.4 items. Unchecked
-> items below are remaining/out-of-scope.
+> **Status (2026-07-31, Session 10 live-test pass):** all 🔴 Security (§6.1) and
+> Correctness (§6.2) items are now FIXED ✅, as are most §6.3/§6.4 items. Session 10
+> ran a full live-browser suite — **45/45 green** (harness `/tmp/opencode/e2e/`
+> `live-test.js`, screenshots committed in `demo/live-test-screenshots/`) and caught
+> one last bug, now fixed: chat spam-guard closed HTTP 403 instead of WS 4429.
+> Unchecked items below are remaining/out-of-scope.
 
 ### 6.1 Security (🔴) — ✅ ALL DONE (Session 9)
 - ✅ **Hardcoded JWT secret fallback** — `auth.py`. Warns on default secret; fails fast when `DEMO_MODE != 1`.
@@ -122,6 +125,9 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **`resolve_sos` no 404 on missing alert** — `routes/sos.py`. 404 when alert missing.
 - ✅ **`resend_otp` uses raw `dict`** — `routes/auth.py`. `ResendOTPRequest` Pydantic model.
 - ✅ **`auto_share` ignores `session_id`** — `routes/contacts.py`. Persists to `contact_shares` + share-history endpoint.
+- ✅ **Chat spam-guard close never reached the client (Session 10)** — the rate-limit
+  path returned HTTP 403; now `await websocket.close(4429)` + `break` so the close
+  code documented in `API.md` actually propagates (`chat.py`).
 
 ### 6.3 Architecture / reliability (🟡)
 - ❌ **Manual `conn.close()` everywhere** — convert to a `get_db()` FastAPI dependency/context manager.
@@ -130,6 +136,7 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ❌ **`init_db()` at import time** — move to FastAPI lifespan.
 - ❌ **`requirements.txt` stale** — refresh pins to the tested versions.
 - ⏳ **No automated tests in repo** — regression script at `/tmp/opencode/test_backend.py` (54 checks, throwaway DB); port into `backend/tests/` pytest suite.
+- ⏳ **Live e2e harness not committed (Session 10)** — Playwright suite at `/tmp/opencode/e2e/live-test.js` (45 checks, 45/45 green); port into a `backend/` or `e2e/` folder for CI.
 - ❌ **Mock notifications scattered** — consolidate into a `notifications.py` service.
 - ❌ **Hardcoded `ZONES` in `rides.py`** — move to a seeded table (unlocks #6/#14).
 - ❌ **Frontend `API` const duplicated** — centralize in `lib/api.ts` with `NEXT_PUBLIC_API_URL` + 401→login redirect.

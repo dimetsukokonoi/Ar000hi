@@ -84,3 +84,39 @@ Open items for teammates (unchanged priorities):
 - Real notifications (SOS + auto-share still console-mocked).
 - pytest suite not yet committed (regression script at /tmp/opencode/test_backend.py).
 - Live tracking still 5s polling, not WebSockets (NFR-1 <2s).
+
+===================================================================
+ENTRY 3 — 2026-07-31 (late): Full live-browser test pass (Session 10)
+===================================================================
+Scope: all 10 shipped features verified through the real UI on running servers
+(backend :8000 --reload, frontend :3000).
+
+Credits: authored with MD. Aminul Islam Ornab via an opencode (CD) agent session.
+Result: 45/45 passed, 0 failed (Playwright, --headed, /opt/helium/chrome).
+Harness: /tmp/opencode/e2e/live-test.js; report: /tmp/opencode/e2e/report.json;
+runtime logs: /tmp/opencode/e2e/backend.log, /tmp/opencode/e2e/frontend.log.
+34 screenshots committed at demo/live-test-screenshots/.
+
+Features exercised: auth/verification, contacts + auto-share history, GPS tracking
++ share token, SOS + admin resolve, ride create/join/accept/start/end, seat-weighted
+cost split, surge schedule, chat (participant gate + spam guard), driver document
+upload + admin approval, complaints, eco + leaderboard, security gates (403/429/4429).
+
+Bug found + fixed during the run:
+- Chat spam-guard path returned HTTP 403 instead of WS close 4429; now
+  await websocket.close(4429) + break in backend/app/routes/chat.py (matches API.md).
+  Re-verified: all 45 green on a fresh DB after the fix.
+
+Repo state:
+- Everything committed at HEAD e9d92cc ("Refactor code structure ... and producing
+  demo images"); working tree clean. Includes chat.py fix, demo/live-test-screenshots/,
+  and Misc./arooohi.db.backup-20260731-214145 (pre-test DB).
+- Demo DB carries approved driver, completed ride, resolved SOS/complaint.
+
+Test accounts (password secret1/2/3 per account):
+- driver.live@g.bracu.ac.bd (Test Driver), rider.live@g.bracu.ac.bd (Rider Person),
+  intruder.live@g.bracu.ac.bd (Nosy User); admin admin@g.bracu.ac.bd / admin123.
+
+Remaining work for next session: real notifications, committed pytest + Playwright
+suites, WS live tracking (NFR-1), then remaining 9 SRS features per PROJECT_PLAN.md §4.
+
