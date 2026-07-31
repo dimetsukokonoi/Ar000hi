@@ -20,7 +20,7 @@
     "passed": 45,
     "failed": 0,
     "bug_found_and_fixed": "chat spam-guard now closes WS 4429 (was HTTP 403)",
-    "repo_head": "e9d92cc",
+    "repo_head": "6ee4216",
     "working_tree": "clean"
   }
 }

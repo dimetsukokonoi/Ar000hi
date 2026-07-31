@@ -108,8 +108,8 @@ Bug found + fixed during the run:
   Re-verified: all 45 green on a fresh DB after the fix.
 
 Repo state:
-- Everything committed at HEAD e9d92cc ("Refactor code structure ... and producing
-  demo images"); working tree clean. Includes chat.py fix, demo/live-test-screenshots/,
+- Everything committed: user commit e9d92cc ("Refactor code structure ... and producing
+  demo images") + docs commit 6ee4216 (Session-10 test record); working tree clean. Includes chat.py fix, demo/live-test-screenshots/,
   and Misc./arooohi.db.backup-20260731-214145 (pre-test DB).
 - Demo DB carries approved driver, completed ride, resolved SOS/complaint.
 

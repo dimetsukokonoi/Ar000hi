@@ -69,7 +69,7 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 - `arooohi.db`: carries live user/test data (driver approved, completed ride,
   resolved SOS/complaint) — kept for the demo; pre-test backup at
   `Misc./arooohi.db.backup-20260731-214145`.
-- `git status` — **clean**; all Session-9/10 changes committed at HEAD `e9d92cc`.
+- `git status` — **clean**; all Session-9/10 changes committed (HEAD `6ee4216`).
 
 ### Live browser test (Session 10, Playwright)
 - Full end-to-end run of the live UI on both running servers: **45/45 passed,
@@ -140,8 +140,9 @@ features in §2.
 
 ## 8. Next actions (priority order)
 
-1. ✅ (Done) Commit Session-9/10 changes — HEAD `e9d92cc`, working tree clean;
-   45/45 live browser tests pass, screenshots in `demo/live-test-screenshots/`.
+1. ✅ (Done) Commit Session-9/10 changes — HEAD `6ee4216` (user commit `e9d92cc` +
+   docs commit), working tree clean; 45/45 live browser tests pass, screenshots in
+   `demo/live-test-screenshots/`.
 2. Ship the cheap wins: Female-Only Mode (#3), Earnings (#16), Ride History (#10).
 3. Add committed pytest suite (regression script at `/tmp/opencode/test_backend.py`)
    and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`).
