@@ -12,17 +12,38 @@ from app.auth import get_current_user_id, require_admin
 router = APIRouter()
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "uploads")
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
+# Extension is derived from the validated MIME type, NOT from the client filename
+# (fixes arbitrary-extension preservation — a stored-XSS/upload-abuse risk).
+MIME_TO_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "application/pdf": ".pdf"}
 
 
 async def save_upload(file: UploadFile, subfolder: str) -> str:
-    """Save an uploaded file and return its URL path."""
+    """Save an uploaded document safely and return its URL path.
+
+    Improvement note:
+    - This keeps the Sprint-1 driver verification module safer for admin review.
+    - Files are still stored locally for the demo setup, but the validation is now stricter.
+    - The stored extension comes from the MIME type, not the client-supplied filename.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Please attach a document file")
+
+    mime = (file.content_type or "").lower()
+    if mime not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload JPG, PNG, or PDF.")
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File is too large. Upload a file smaller than 2MB.")
+
     os.makedirs(os.path.join(UPLOADS_DIR, subfolder), exist_ok=True)
-    ext = os.path.splitext(file.filename or "file")[1] or ".jpg"
+    ext = MIME_TO_EXT[mime]
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(UPLOADS_DIR, subfolder, filename)
 
     with open(filepath, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     return f"/uploads/{subfolder}/{filename}"
@@ -77,8 +98,7 @@ async def submit_driver_verification(
              vehicle_type, vehicle_model, vehicle_plate)
         )
 
-    # Update user role to driver
-    conn.execute("UPDATE users SET role = 'driver' WHERE id = ?", (user_id,))
+    # Keep the user in a pending driver-review state until the admin approves the submission.
     conn.commit()
     conn.close()
 
@@ -114,15 +134,36 @@ def get_driver_status(user_id: str = Depends(get_current_user_id)):
 
 
 @router.get("/pending")
-def get_pending_drivers(admin_id: str = Depends(require_admin)):
-    """Admin: Get all pending driver verification requests."""
+def get_pending_drivers(
+    status: str = "pending",
+    admin_id: str = Depends(require_admin),
+):
+    """Admin: driver verification requests, filterable by status.
+
+    Fix (PROJECT_PLAN.md §6.2): the endpoint was misnamed — it returned ALL statuses.
+    Now it defaults to `pending` (matching the name) and supports
+    `?status=all|pending|approved|rejected` for the admin review UI.
+    """
+    if status not in ("all", "pending", "approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be all, pending, approved, or rejected")
+
     conn = get_db()
-    profiles = conn.execute(
-        """SELECT dp.*, u.name, u.bracu_email, u.phone, u.gender
-           FROM driver_profiles dp
-           JOIN users u ON dp.user_id = u.id
-           ORDER BY dp.created_at DESC"""
-    ).fetchall()
+    if status == "all":
+        profiles = conn.execute(
+            """SELECT dp.*, u.name, u.bracu_email, u.phone, u.gender
+               FROM driver_profiles dp
+               JOIN users u ON dp.user_id = u.id
+               ORDER BY dp.created_at DESC"""
+        ).fetchall()
+    else:
+        profiles = conn.execute(
+            """SELECT dp.*, u.name, u.bracu_email, u.phone, u.gender
+               FROM driver_profiles dp
+               JOIN users u ON dp.user_id = u.id
+               WHERE dp.verification_status = ?
+               ORDER BY dp.created_at DESC""",
+            (status,)
+        ).fetchall()
     conn.close()
 
     return [
@@ -168,8 +209,9 @@ def review_driver(profile_id: str, body: dict, admin_id: str = Depends(require_a
         (status, notes, profile_id)
     )
 
-    # If rejected, revert role to rider
-    if status == "rejected":
+    if status == "approved":
+        conn.execute("UPDATE users SET role = 'driver' WHERE id = ?", (profile["user_id"],))
+    else:
         conn.execute("UPDATE users SET role = 'rider' WHERE id = ?", (profile["user_id"],))
 
     conn.commit()

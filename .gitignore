@@ -7,3 +7,6 @@ backend/.venv/
 # Python artifacts
 __pycache__/
 *.pyc
+
+# Driver doc uploads (local files)
+backend/uploads/

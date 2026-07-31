@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -29,11 +29,22 @@ const HOTSPOTS = [
   { name: "Residential", lat: 23.7772, lng: 90.4032 },
 ];
 
-function MapUpdater({ center }: { center: { lat: number; lng: number } }) {
+function MapUpdater({ center, follow, onInteract }: { center: { lat: number; lng: number }; follow: boolean; onInteract: () => void }) {
   const map = useMap();
+
+  // Only auto-follow when the user hasn't dragged the map (fix: map used to
+  // re-center on every GPS tick, making manual exploration impossible).
   useEffect(() => {
+    if (!follow) return;
     map.setView([center.lat, center.lng], map.getZoom(), { animate: true });
-  }, [center, map]);
+  }, [center, follow, map]);
+
+  useEffect(() => {
+    const onDragStart = () => onInteract();
+    map.on("dragstart", onDragStart);
+    return () => { map.off("dragstart", onDragStart); };
+  }, [map, onInteract]);
+
   return null;
 }
 
@@ -46,6 +57,7 @@ interface Props {
 
 export default function TrackingMap({ center, points, currentPos, isTracking }: Props) {
   const routeLine = points.map(p => [p.lat, p.lng] as [number, number]);
+  const [follow, setFollow] = useState(true);
 
   return (
     <div className="map-container">
@@ -60,7 +72,7 @@ export default function TrackingMap({ center, points, currentPos, isTracking }: 
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
-        <MapUpdater center={center} />
+        <MapUpdater center={center} follow={follow} onInteract={() => setFollow(false)} />
 
         {/* Current position marker */}
         {currentPos && (
@@ -102,6 +114,30 @@ export default function TrackingMap({ center, points, currentPos, isTracking }: 
           </Marker>
         ))}
       </MapContainer>
+
+      {/* Re-center control — appears once the user pans away from auto-follow */}
+      {!follow && (
+        <button
+          onClick={() => setFollow(true)}
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: 24,
+            zIndex: 1000,
+            padding: "8px 14px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--surface-border)",
+            background: "var(--surface)",
+            color: "var(--text-primary)",
+            fontSize: "0.8rem",
+            fontWeight: 600,
+            cursor: "pointer",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+          }}
+        >
+          🎯 Re-center
+        </button>
+      )}
     </div>
   );
 }

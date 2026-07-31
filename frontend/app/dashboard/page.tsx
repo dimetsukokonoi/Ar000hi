@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 
 const API = "http://localhost:8000/api";
@@ -38,9 +38,38 @@ export default function DashboardPage() {
   const [sosResult, setSosResult] = useState<SosResult | null>(null);
   const watchId = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionRef = useRef<SessionInfo | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const headers = useMemo(
+    () => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }),
+    [token]
+  );
+
+  // Cleanup: never leave the geolocation watch / demo interval running on unmount.
+  useEffect(() => {
+    return () => {
+      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  // Single source of truth for recording a point (GPS or demo walk).
+  const recordPoint = useCallback(async (pos: { lat: number; lng: number }) => {
+    if (!sessionRef.current) return;
+    setCurrentPos(pos);
+    setPoints(prev => {
+      const next = [...prev, { ...pos, created_at: new Date().toISOString() }];
+      return next.length > 300 ? next.slice(-300) : next; // cap client buffer
+    });
+    try {
+      await fetch(`${API}/tracking/point`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ session_id: sessionRef.current.session_id, lat: pos.lat, lng: pos.lng }),
+      });
+    } catch { /* best-effort point upload */ }
+  }, [headers]);
 
   // Get current position
   useEffect(() => {
@@ -57,7 +86,7 @@ export default function DashboardPage() {
     if (!token) return;
     const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
     fetch(`${API}/tracking/active`, { headers: h }).then(r => r.json()).then(data => {
-      if (data.session) setSession(data.session);
+      if (data.session) { setSession(data.session); sessionRef.current = data.session; }
     }).catch(() => {});
   }, [token]);
 
@@ -66,6 +95,7 @@ export default function DashboardPage() {
       const res = await fetch(`${API}/tracking/session`, { method: "POST", headers });
       const data = await res.json();
       setSession(data);
+      sessionRef.current = data;
       setTracking(true);
       setPoints([]);
 
@@ -78,39 +108,26 @@ export default function DashboardPage() {
         }).catch(() => {});
       }
 
-      // Watch position and send updates
+      // One source of truth: prefer real GPS; fall back to a gentle demo walk so the
+      // map still moves when no hardware signal arrives. (Previously BOTH ran → duplicates.)
+      let gpsActive = false;
       if (navigator.geolocation) {
         watchId.current = navigator.geolocation.watchPosition(
-          (pos) => {
-            const point = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            setCurrentPos(point);
-            setPoints(prev => [...prev, { ...point, created_at: new Date().toISOString() }]);
-            // Send to backend
-            fetch(`${API}/tracking/point`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ session_id: data.session_id, lat: point.lat, lng: point.lng }),
-            }).catch(() => {});
-          },
+          (pos) => { gpsActive = true; recordPoint({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
           () => {},
           { enableHighAccuracy: true, maximumAge: 3000 }
         );
       }
 
-      // Also simulate movement for demo (in case GPS doesn't update frequently)
       intervalRef.current = setInterval(() => {
+        if (gpsActive) return; // real GPS already updating
         setCurrentPos(prev => {
           if (!prev) return prev;
           const newPos = {
             lat: prev.lat + (Math.random() - 0.5) * 0.001,
             lng: prev.lng + (Math.random() - 0.5) * 0.001,
           };
-          setPoints(p => [...p, { ...newPos, created_at: new Date().toISOString() }]);
-          fetch(`${API}/tracking/point`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ session_id: data.session_id, lat: newPos.lat, lng: newPos.lng }),
-          }).catch(() => {});
+          recordPoint(newPos);
           return newPos;
         });
       }, 5000);
@@ -128,9 +145,10 @@ export default function DashboardPage() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    if (session) {
-      await fetch(`${API}/tracking/session/${session.session_id || session.id}/stop`, { method: "POST", headers }).catch(() => {});
+    if (sessionRef.current) {
+      await fetch(`${API}/tracking/session/${sessionRef.current.session_id || sessionRef.current.id}/stop`, { method: "POST", headers }).catch(() => {});
     }
+    sessionRef.current = null;
     setTracking(false);
     setSession(null);
   };
@@ -149,7 +167,7 @@ export default function DashboardPage() {
       const res = await fetch(`${API}/sos/trigger`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ lat: currentPos.lat, lng: currentPos.lng, session_id: session?.session_id }),
+        body: JSON.stringify({ lat: currentPos.lat, lng: currentPos.lng, session_id: sessionRef.current?.session_id || session?.session_id }),
       });
       const data = await res.json();
       setSosResult(data);
@@ -206,9 +224,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Map */}
+      {/* Map — keyed by session so a fresh tracking session resets map auto-follow */}
       <div style={{ marginBottom: 24 }}>
-        <TrackingMap center={currentPos || { lat: 23.7781, lng: 90.4042 }} points={points} currentPos={currentPos} isTracking={tracking} />
+        <TrackingMap key={session?.session_id || "idle"} center={currentPos || { lat: 23.7781, lng: 90.4042 }} points={points} currentPos={currentPos} isTracking={tracking} />
       </div>
 
       {/* Campus Hotspots Legend */}

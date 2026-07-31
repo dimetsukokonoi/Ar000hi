@@ -35,6 +35,7 @@ export default function RideChatPage() {
     }
   });
   const [connected, setConnected] = useState(false);
+  const [fatalError, setFatalError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -45,7 +46,17 @@ export default function RideChatPage() {
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
     fetch(`${API}/rides/${rideId}/messages`, { headers })
-      .then(res => res.ok ? res.json() : [])
+      .then(res => {
+        if (res.status === 403) {
+          setFatalError("You're not a participant of this ride, so the chat is unavailable.");
+          return [];
+        }
+        if (res.status === 404) {
+          setFatalError("This ride no longer exists.");
+          return [];
+        }
+        return res.ok ? res.json() : [];
+      })
       .then(setMessages)
       .catch(err => console.error("Failed to load chat history:", err));
   }, [token, rideId]);
@@ -63,6 +74,7 @@ export default function RideChatPage() {
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
+          if (msg.type === "rate_limited") return; // server throttle hint; keep UX calm
           setMessages(prev => [...prev, msg]);
         } catch (err) {
           console.error("Bad WS message:", err);
@@ -70,7 +82,16 @@ export default function RideChatPage() {
       };
       ws.onclose = (ev) => {
         setConnected(false);
-        if (!closedByUser && ev.code !== 4401 && ev.code !== 4403) {
+        // 4401 = bad/expired token, 4403 = not a ride participant — terminal, explain.
+        if (ev.code === 4401 || ev.code === 4403) {
+          setFatalError(
+            ev.code === 4403
+              ? "You're not a participant of this ride, so the chat is unavailable."
+              : "Your session expired. Please log in again."
+          );
+          return;
+        }
+        if (!closedByUser) {
           retryTimer = setTimeout(connect, 3000);
         }
       };
@@ -110,6 +131,15 @@ export default function RideChatPage() {
         </span>
       </div>
 
+      {fatalError ? (
+        <div className="glass-card" style={{ textAlign: "center", padding: 48 }}>
+          <div style={{ fontSize: "3rem", marginBottom: 16 }}>🔒</div>
+          <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Chat Unavailable</div>
+          <p style={{ fontSize: "0.9rem", color: "var(--text-tertiary)", maxWidth: 420, margin: "0 auto" }}>
+            {fatalError}
+          </p>
+        </div>
+      ) : (
       <div className="glass-card" style={{ display: "flex", flexDirection: "column", height: "60vh", padding: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
           {messages.length === 0 && (
@@ -150,6 +180,7 @@ export default function RideChatPage() {
           <button type="submit" className="btn btn-primary" disabled={!connected}>Send</button>
         </form>
       </div>
+      )}
     </>
   );
 }

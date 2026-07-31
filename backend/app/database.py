@@ -9,10 +9,22 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "arooohi.db")
 
 def get_db() -> sqlite3.Connection:
     """Get a database connection with row_factory set."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """Idempotently add a column to an existing table (lightweight migration).
+
+    Used so `init_db()` can extend tables that already exist in older DB files
+    without a full migration framework. (Ornab / cross-agent improvement pass)
+    """
+    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 def init_db():
@@ -122,6 +134,7 @@ def init_db():
             distance_km REAL,
             base_fare REAL NOT NULL,
             surge_multiplier REAL NOT NULL DEFAULT 1.0,
+            total_seats INTEGER NOT NULL DEFAULT 4,
             scheduled_at TEXT,
             started_at TEXT,
             ended_at TEXT,
@@ -152,7 +165,37 @@ def init_db():
             demand REAL NOT NULL,
             label TEXT NOT NULL
         );
+
+        -- Ornab (Feature 12): persisted record of every auto-share so the
+        -- "share to trusted contacts" action is auditable, not just console-logged.
+        CREATE TABLE IF NOT EXISTS contact_shares (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            share_url TEXT NOT NULL,
+            session_id TEXT,
+            contact_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
+    conn.commit()
+
+    # ---- Lightweight migrations for existing DB files (idempotent) ----
+    # rides.total_seats powers seat-aware cost splitting + join capacity checks.
+    _ensure_column(conn, "rides", "total_seats", "INTEGER NOT NULL DEFAULT 4")
+
+    # SQLite hardening: WAL journal + indexes on the hot foreign keys.
+    # (matches PROJECT_PLAN.md §6.3)
+    conn.execute("PRAGMA journal_mode = WAL")
+    for idx_sql in (
+        "CREATE INDEX IF NOT EXISTS idx_ride_passengers_ride ON ride_passengers(ride_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ride_passengers_user ON ride_passengers(passenger_id)",
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_ride ON chat_messages(ride_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tracking_points_session ON tracking_points(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_trusted_contacts_user ON trusted_contacts(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_contact_shares_user ON contact_shares(user_id)",
+    ):
+        conn.execute(idx_sql)
     conn.commit()
 
     # Ornab: seed 24-hour peak-hour surge baseline (hour, demand, label)

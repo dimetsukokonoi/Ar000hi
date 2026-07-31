@@ -1,0 +1,86 @@
+Arooohi Cross-Agent Collaboration Log
+Date: 2026-07-31
+
+Scope boundary:
+- Primary owner for this session: Ornab (Sprint-2)
+- Shared compatibility scope: Sami's completed Sprint-1 modules remain the base safety and verification foundation
+
+Modules explicitly in active Sprint-2 scope:
+1. Ride cost splitter
+2. Trusted contact sharing
+3. Ride chat
+4. Eco-footprint tracker
+5. Peak hour surge indicator
+
+Shared Sprint-1 modules intentionally preserved and improved where needed:
+1. BRACU Student Verification
+2. Driver Vehicle Verification
+3. Live GPS Ride Tracking
+4. In-App SOS Button
+5. Admin Complaint Panel
+
+Collaboration note:
+- A prior workflow from another AI agent (Opencode) produced the initial feature structure and UI/demo flow.
+- This session reviewed that work, updated the relevant backend safety/logic boundaries, and documented the new engineering decisions in the repo-level progress notes.
+
+Applied changes summary:
+- normalized BRACU email and user input handling in the auth flow so identity and login remain consistent
+- tightened the driver verification upload path with content-type and size checks for safer admin review
+- validated ride join seat count in the ride route to avoid malformed split-cost assumptions
+- restricted ride cost split visibility to the driver or accepted participants only
+- added message length trimming for WebSocket chat messages to keep the live message path stable
+- filtered eco stats to completed rides with valid distance to prevent meaningless footprint calculations
+- added explicit improvement notes and credit-style comments in the route docstrings to preserve ownership clarity
+
+Documentation files created / updated in this session:
+- Misc./SRS_Analysis_and_Implementation_Plan.md
+- Misc./Feature_Progress_Report.txt
+- memories/session/sprint2-ornab-work.md
+
+Status expectation:
+- This is an engineering improvement pass for the current 10-feature scope and is still not a full production replacement for the SRS's larger payment, matching, and deployment requirements.
+
+===================================================================
+ENTRY 2 — 2026-07-31 (evening): Security/correctness hardening pass (CD-assisted)
+===================================================================
+Scope: same 10 features (5 Sprint-2 Ornab + 5 shared Sprint-1 Sami modules).
+
+Credits: changes below were authored with MD. Aminul Islam Ornab via an
+opencode (CD) agent session. Ornab owns the Sprint-2 feature scope and
+reviewed/approved all edits before they were applied.
+
+Applied changes summary (all verified):
+- Auth/verification: DEMO_MODE-gated OTP hint; per-IP+email rate limiting for
+  login and OTP verify/resend (5 attempts / 5 min); account-active check in
+  token validation; stronger password rule (min 6 chars).
+- Driver verification: `GET /api/drivers/pending?status=all|pending|approved|rejected`
+  (default pending); upload extension now derived from MIME type.
+- Live tracking: 32-hex share token (was 12 hex); session read is owner-only;
+  stop on an already-inactive session now 404s; frontend stops polling when the
+  ride ends; map gains auto-follow + manual re-center.
+- SOS: resolving a missing alert now returns 404.
+- Admin complaints: reporter existence is validated.
+- Cost splitter: seat-weighted shares with exact (paisa) rounding so breakdown
+  always sums to the total; join enforces capacity via `total_seats` (default 4).
+- Surge: schedule now flags exactly one `is_current` hour and the live active-ride
+  bump applies only to that hour (was bumping all 24).
+- Contacts: BD-format phone validation; auto-share now persists to a new
+  `contact_shares` table and a share-history endpoint lists it.
+- Chat: spam guard (20 msgs / 10 s → close 4429) + 500-char message cap.
+- Eco: NULL-distance guard; new top-10 leaderboard endpoint.
+- DB: WAL mode + FK indexes; `rides.total_seats` migration; new `contact_shares` table.
+- Frontend: rides page rewritten (surge schedule strip, seats, inline errors,
+  participant-gated chat), chat 4401/4403 fatal states, contacts share history,
+  eco error state + leaderboard, dashboard GPS double-post + interval-leak fixed.
+
+Verification:
+- Backend regression: 54/54 checks green on a throwaway DB.
+- Live smoke: schedule is_current, total_seats, 32-hex token, share history,
+  login rate-limit 429 — all green.
+- Frontend: `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+- Backend now runs with `--reload` so future changes are picked up automatically.
+
+Open items for teammates (unchanged priorities):
+- Real notifications (SOS + auto-share still console-mocked).
+- pytest suite not yet committed (regression script at /tmp/opencode/test_backend.py).
+- Live tracking still 5s polling, not WebSockets (NFR-1 <2s).

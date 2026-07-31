@@ -3,15 +3,37 @@ Arooohi Backend — Ride Chat Routes
 Feature 15: Ride Chat (In-App Messaging)  (Ornab)
 WebSocket endpoint for real-time messaging (SRS 3.3.4) + DB persistence.
 Only the ride driver and accepted passengers may join a conversation.
+
+Improvements in this pass:
+- Per-user message rate limiting (spam guard) — max N messages per second.
+- Message length capped at 500 chars.
 """
 import uuid
 import json
+import time
+import threading
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.database import get_db
 from app.auth import decode_token
 
 router = APIRouter()
+
+_MAX_MSGS_PER_10S = 20
+_spam: dict[str, list[float]] = {}
+_spam_lock = threading.Lock()
+
+
+def _allow_message(user_id: str) -> bool:
+    """Return True if the user is under the send rate cap; else False."""
+    now = time.time()
+    with _spam_lock:
+        stamps = [t for t in _spam.get(user_id, []) if now - t < 10]
+        if len(stamps) >= _MAX_MSGS_PER_10S:
+            return False
+        stamps.append(now)
+        _spam[user_id] = stamps
+        return True
 
 
 class ConnectionManager:
@@ -93,6 +115,14 @@ async def ride_chat_ws(websocket: WebSocket, ride_id: str):
                 message = ""
 
             if not message:
+                continue
+            if len(message) > 500:
+                message = message[:500]
+            if not _allow_message(user_id):
+                await websocket.send_text(json.dumps({
+                    "error": "Slow down — message rate limit reached.",
+                    "type": "rate_limited",
+                }))
                 continue
 
             msg_id = str(uuid.uuid4())

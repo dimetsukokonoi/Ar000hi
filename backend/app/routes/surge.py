@@ -50,7 +50,11 @@ def compute_current_multiplier(conn) -> tuple:
 
 @router.get("/current")
 def get_current_surge(user_id: str = Depends(get_current_user_id)):
-    """Current surge multiplier + label based on the hour and live ride volume."""
+    """Current surge multiplier + label based on the hour and live ride volume.
+
+    Improvement note:
+    - The surge state remains a lightweight live demand indicator for the ride planner view.
+    """
     conn = get_db()
     multiplier, demand, active = compute_current_multiplier(conn)
     conn.close()
@@ -66,20 +70,30 @@ def get_current_surge(user_id: str = Depends(get_current_user_id)):
 
 @router.get("/schedule")
 def get_surge_schedule(user_id: str = Depends(get_current_user_id)):
-    """Hourly surge schedule (0-23) — used to warn users of upcoming peak windows."""
+    """Hourly surge schedule (0-23) — used to warn users of upcoming peak windows.
+
+    Fix (PROJECT_PLAN.md §6.2): the live active-ride bump now applies ONLY to the
+    current hour. Other hours show their seeded baseline so the schedule reads as a
+    proper forecast instead of shifting all 24 hours by the same amount.
+    """
     conn = get_db()
     rows = conn.execute("SELECT hour, demand, label FROM surge_config ORDER BY hour ASC").fetchall()
     active = conn.execute("SELECT COUNT(*) AS c FROM rides WHERE status = 'active'").fetchone()["c"]
+    current_hour = datetime.now(BD_TZ).hour
     conn.close()
 
     schedule = []
     for r in rows:
-        m = _compute_multiplier(r["demand"], active)
+        hour = r["hour"]
+        is_current = hour == current_hour
+        # Live bump only on the current hour; elsewhere baseline only.
+        m = _compute_multiplier(r["demand"], active if is_current else 0)
         schedule.append({
-            "hour": r["hour"],
+            "hour": hour,
             "demand": r["demand"],
             "multiplier": m,
             "label": _label_for(m),
+            "is_current": is_current,
         })
 
     return {"schedule": schedule}

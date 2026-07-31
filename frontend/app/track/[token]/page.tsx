@@ -27,19 +27,25 @@ export default function SharedTrackingPage() {
   const token = params.token as string;
   const [data, setData] = useState<TrackingData | null>(null);
   const [error, setError] = useState("");
+  const [ended, setEnded] = useState(false);
 
   const fetchData = useCallback(() => {
     fetch(`${API}/tracking/share/${token}`)
       .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
-      .then(setData)
+      .then(d => {
+        setData(d);
+        // Stop polling once the session ends (fix: page previously polled forever).
+        if (!d.is_active) setEnded(true);
+      })
       .catch(() => setError("Tracking session not found or has ended."));
   }, [token]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000); // Poll every 5 seconds
+    if (ended) return; // no polling after the session has ended
+    const interval = setInterval(fetchData, 5000); // Poll every 5 seconds while live
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, ended]);
 
   if (error) {
     return (

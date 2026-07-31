@@ -22,9 +22,20 @@ interface EcoStats {
   rides: EcoRide[];
 }
 
+interface LeaderboardEntry {
+  rank: number;
+  user_id: string;
+  name: string;
+  distance_km: number;
+  trips: number;
+  saved_kg_approx: number;
+}
+
 // Ornab: Eco/Footprint Tracker (Feature 20) — CO2 saved by carpooling vs solo rides
 export default function EcoTrackerPage() {
   const [stats, setStats] = useState<EcoStats | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [error, setError] = useState("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -34,7 +45,11 @@ export default function EcoTrackerPage() {
     fetch(`${API}/eco/stats`, { headers })
       .then(res => res.ok ? res.json() : null)
       .then(setStats)
-      .catch(err => console.error("Failed to load eco stats:", err));
+      .catch(err => { setError("Could not load your eco stats right now."); console.error(err); });
+    fetch(`${API}/eco/leaderboard`, { headers })
+      .then(res => res.json())
+      .then(data => setLeaderboard(Array.isArray(data?.leaderboard) ? data.leaderboard : []))
+      .catch(() => {});
   }, [token]);
 
   // Progress ring via SVG
@@ -49,15 +64,27 @@ export default function EcoTrackerPage() {
         <p className="page-subtitle">See how much CO₂ you saved by choosing to carpool instead of driving solo</p>
       </div>
 
-      {!stats ? (
+      {error && (
+        <div className="glass-card" style={{ textAlign: "center", padding: 48, color: "var(--text-tertiary)" }}>
+          <div style={{ fontSize: "3rem", marginBottom: 16 }}>⚠️</div>
+          <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Something went wrong</div>
+          <div style={{ fontSize: "0.85rem" }}>{error}</div>
+        </div>
+      )}
+
+      {!error && !stats && (
         <div style={{ display: "flex", justifyContent: "center", padding: 48 }}><span className="spinner spinner-lg" /></div>
-      ) : stats.trips === 0 ? (
+      )}
+
+      {!error && stats && stats.trips === 0 && (
         <div className="glass-card" style={{ textAlign: "center", padding: 48, color: "var(--text-tertiary)" }}>
           <div style={{ fontSize: "3rem", marginBottom: 16 }}>🌱</div>
           <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>No eco data yet</div>
           <div style={{ fontSize: "0.85rem" }}>Complete a shared ride and your footprint savings will appear here</div>
         </div>
-      ) : (
+      )}
+
+      {!error && stats && stats.trips > 0 && (
         <>
           <div className="stats-grid" style={{ marginBottom: 32 }}>
             <div className="glass-card stat-card">
@@ -120,6 +147,23 @@ export default function EcoTrackerPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Leaderboard (Feature 20 improvement — gamified ranking) */}
+      {leaderboard.length > 0 && (
+        <div className="glass-card" style={{ padding: 20, marginTop: 24 }}>
+          <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 12 }}>🏆 Community Leaderboard</h3>
+          {leaderboard.map((e, i) => (
+            <div key={e.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid rgba(100,120,200,0.06)", fontSize: "0.85rem" }}>
+              <span style={{ width: 28, height: 28, borderRadius: "50%", background: i < 3 ? "var(--warning-muted)" : "var(--surface)", color: i < 3 ? "var(--warning)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.75rem" }}>
+                {e.rank}
+              </span>
+              <span style={{ flex: 1, fontWeight: 600 }}>{e.name}</span>
+              <span style={{ color: "var(--text-secondary)" }}>{e.trips} trips · {e.distance_km} km</span>
+              <span style={{ color: "var(--success)", fontWeight: 700 }}>{e.saved_kg_approx} kg saved</span>
+            </div>
+          ))}
+        </div>
       )}
     </>
   );

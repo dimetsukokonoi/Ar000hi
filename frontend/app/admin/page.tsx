@@ -40,7 +40,9 @@ export default function AdminDashboard() {
     const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
     fetch(`${API}/complaints/stats`, { headers: h }).then(r => r.json()).then(setStats).catch(() => {});
     fetch(`${API}/sos/alerts`, { headers: h }).then(r => r.json()).then(data => setSosAlerts(Array.isArray(data) ? data.slice(0, 5) : [])).catch(() => {});
-    fetch(`${API}/drivers/pending`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data.filter((d: DriverSummary) => d.verification_status === "pending") : [])).catch(() => {});
+    // `/drivers/pending` defaults to `pending` status server-side now; the dashboard
+    // only cares about pending anyway.
+    fetch(`${API}/drivers/pending`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data : [])).catch(() => {});
   }, [token]);
 
   return (

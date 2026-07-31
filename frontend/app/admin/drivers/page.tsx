@@ -28,7 +28,9 @@ export default function AdminDriversPage() {
 
   const fetchDrivers = useCallback(() => {
     const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    fetch(`${API}/drivers/pending`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data : [])).catch(() => {});
+    // Backend `/drivers/pending` now defaults to `pending`; pass ?status=all for the
+    // review UI which needs the full list (approved/rejected included).
+    fetch(`${API}/drivers/pending?status=all`, { headers: h }).then(r => r.json()).then(data => setDrivers(Array.isArray(data) ? data : [])).catch(() => {});
   }, [token]);
 
   useEffect(() => { fetchDrivers(); }, [fetchDrivers]);

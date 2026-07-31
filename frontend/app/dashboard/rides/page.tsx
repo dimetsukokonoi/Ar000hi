@@ -15,6 +15,7 @@ interface RideInfo {
   distance_km: number | null;
   base_fare: number;
   surge_multiplier: number;
+  total_seats: number;
   scheduled_at?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
@@ -30,6 +31,14 @@ interface SurgeInfo {
   message: string;
 }
 
+interface SurgeHour {
+  hour: number;
+  demand: number;
+  multiplier: number;
+  label: string;
+  is_current: boolean;
+}
+
 interface SplitInfo {
   ride_id: string;
   source: string;
@@ -37,9 +46,14 @@ interface SplitInfo {
   base_fare: number;
   surge_multiplier: number;
   total: number;
+  total_seats: number;
   passenger_count: number;
-  per_person: number | null;
-  breakdown: { passenger: string; share: number }[];
+  per_seat: number | null;
+  breakdown: { passenger: string; seats: number; share: number }[];
+}
+
+interface MeInfo {
+  id: string;
 }
 
 const BADGES: Record<string, string> = {
@@ -49,23 +63,41 @@ const BADGES: Record<string, string> = {
   "Normal": "badge-success",
 };
 
-// Ornab: Rides page — surge indicator + ride create/join + cost splitter + chat entry
+// Ornab: Rides page — surge indicator + hourly surge strip + ride create/join
+// + seat-aware cost splitter + participant-gated chat entry.
 export default function RidesPage() {
   const [surge, setSurge] = useState<SurgeInfo | null>(null);
+  const [schedule, setSchedule] = useState<SurgeHour[]>([]);
   const [rides, setRides] = useState<{ mine: RideInfo[]; available: RideInfo[] }>({ mine: [], available: [] });
-  const [form, setForm] = useState({ source: "", destination: "", base_fare: "" });
+  const [form, setForm] = useState({ source: "", destination: "", base_fare: "", total_seats: "4" });
   const [split, setSplit] = useState<Record<string, SplitInfo>>({});
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [me] = useState<MeInfo | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("user");
+      return raw ? (JSON.parse(raw) as MeInfo) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  const showNotice = (type: "success" | "error", text: string) => {
+    setNotice({ type, text });
+    setTimeout(() => setNotice(null), 5000);
+  };
 
   useEffect(() => {
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
     Promise.all([
       fetch(`${API}/surge/current`, { headers }).then(res => res.json()).catch(() => null),
+      fetch(`${API}/surge/schedule`, { headers }).then(res => res.json()).then(d => (d?.schedule ?? [])).catch(() => []),
       fetch(`${API}/rides`, { headers }).then(res => res.json()).catch(() => ({ mine: [], available: [] })),
-    ]).then(([s, r]) => { setSurge(s); setRides(r); });
+    ]).then(([s, sc, r]) => { setSurge(s); setSchedule(sc); setRides(r); });
   }, [token]);
 
   const createRide = async (e: React.FormEvent) => {
@@ -77,16 +109,23 @@ export default function RidesPage() {
       const res = await fetch(`${API}/rides`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ source: form.source, destination: form.destination, base_fare: Number(form.base_fare) }),
+        body: JSON.stringify({
+          source: form.source,
+          destination: form.destination,
+          base_fare: Number(form.base_fare),
+          total_seats: Number(form.total_seats),
+        }),
       });
       const data = await res.json();
       if (res.ok) {
-        setForm({ source: "", destination: "", base_fare: "" });
+        setForm({ source: "", destination: "", base_fare: "", total_seats: "4" });
+        showNotice("success", data.message || "Ride created");
         reload();
       } else {
-        alert(data.detail || "Failed to create ride");
+        showNotice("error", data.detail || "Failed to create ride");
       }
     } catch (err) {
+      showNotice("error", "Network error — could not create ride");
       console.error(err);
     } finally {
       setLoading(false);
@@ -99,9 +138,10 @@ export default function RidesPage() {
     try {
       const res = await fetch(`${API}/rides/${rideId}/join`, { method: "POST", headers, body: JSON.stringify({ seats: 1 }) });
       const data = await res.json();
-      alert(res.ok ? data.message : data.detail);
+      showNotice(res.ok ? "success" : "error", res.ok ? data.message : (data.detail || "Failed to join"));
       reload();
     } catch (err) {
+      showNotice("error", "Network error — could not join ride");
       console.error(err);
     }
   };
@@ -122,17 +162,26 @@ export default function RidesPage() {
     try {
       const res = await fetch(`${API}/rides/${rideId}/split`, { headers });
       const data = await res.json();
+      if (!res.ok) { showNotice("error", data.detail || "Could not load fare split"); return; }
       setSplit({ [rideId]: data });
     } catch (err) {
+      showNotice("error", "Network error — could not load fare split");
       console.error(err);
     }
   };
 
   const surgeBadge = surge ? BADGES[surge.label] || "badge-success" : "badge-success";
 
+  const upcomingPeaks = schedule
+    .filter(h => h.hour > (surge?.hour ?? -1))
+    .slice(0, 6)
+    .filter(h => h.multiplier >= 1.3);
+
   const renderRideCard = (ride: RideInfo, mine: boolean) => {
     const s = split[ride.id];
-    const chatOpen = ride.status === "active" || ride.status === "scheduled";
+    const isParticipant = mine || (me && ride.driver_id === me.id);
+    // Chat is only for the driver or an accepted/participating rider.
+    const chatOpen = isParticipant && (ride.status === "active" || ride.status === "scheduled");
     return (
       <div key={ride.id} className="glass-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -142,6 +191,7 @@ export default function RidesPage() {
             </div>
             <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
               Driver: {ride.driver_name} · {ride.status} · est. {ride.distance_km || "—"} km
+              {ride.total_seats ? ` · ${ride.total_seats} seats` : ""}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
@@ -167,12 +217,12 @@ export default function RidesPage() {
           {!mine && ride.status === "scheduled" && (
             <button className="btn btn-sm btn-primary" onClick={() => joinRide(ride.id)}>🚕 Request Seat</button>
           )}
-          {(mine || ride.status === "active" || ride.status === "completed") && (
+          {(isParticipant && (ride.status === "active" || ride.status === "completed")) && (
             <button className="btn btn-sm btn-secondary" onClick={() => loadSplit(ride.id)}>
               💸 Cost Splitter
             </button>
           )}
-          {chatOpen && (mine || ride.status === "active") && (
+          {chatOpen && (
             <Link href={`/dashboard/chat/${ride.id}`} className="btn btn-sm btn-secondary">💬 Ride Chat</Link>
           )}
         </div>
@@ -182,15 +232,15 @@ export default function RidesPage() {
             <div style={{ fontWeight: 700, marginBottom: 8 }}>💸 Fare Breakdown</div>
             <div style={{ fontSize: "0.85rem", display: "grid", gap: 4, color: "var(--text-secondary)" }}>
               <div>Base fare: ৳{s.base_fare} × surge {s.surge_multiplier}</div>
-              <div>Total: <strong style={{ color: "var(--text-primary)" }}>৳{s.total}</strong> · {s.passenger_count} passenger(s)</div>
+              <div>Total: <strong style={{ color: "var(--text-primary)" }}>৳{s.total}</strong> · {s.passenger_count} passenger(s) · {s.total_seats} seat(s)</div>
               <div style={{ color: "var(--primary)", fontWeight: 700, fontSize: "1rem", marginTop: 4 }}>
-                Each pays: ৳{s.per_person ?? "—"}
+                Per seat: ৳{s.per_seat ?? "—"}
               </div>
             </div>
             {s.breakdown.length > 0 && (
               <div style={{ marginTop: 8, fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
                 {s.breakdown.map((b, i) => (
-                  <div key={i}>• {b.passenger}: ৳{b.share}</div>
+                  <div key={i}>• {b.passenger}{b.seats > 1 ? ` (${b.seats} seats)` : ""}: ৳{b.share}</div>
                 ))}
               </div>
             )}
@@ -206,6 +256,19 @@ export default function RidesPage() {
         <h1 className="page-title">🚗 Rides</h1>
         <p className="page-subtitle">Create or join rides · live surge pricing · split fares</p>
       </div>
+
+      {notice && (
+        <div style={{
+          padding: "12px 16px",
+          borderRadius: "var(--radius-md)",
+          fontSize: "0.85rem",
+          marginBottom: 20,
+          background: notice.type === "success" ? "var(--success-muted)" : "var(--danger-muted)",
+          color: notice.type === "success" ? "var(--success)" : "var(--danger)",
+        }}>
+          {notice.text}
+        </div>
+      )}
 
       {/* Peak Hour Surge Indicator (Ornab, Feature 13) */}
       {surge && (
@@ -224,10 +287,24 @@ export default function RidesPage() {
         </div>
       )}
 
+      {/* Upcoming peak strip (Feature 13 improvement — plan rides better) */}
+      {upcomingPeaks.length > 0 && (
+        <div className="glass-card" style={{ padding: 16, marginBottom: 24 }}>
+          <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 10 }}>⏰ Upcoming peak windows</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {upcomingPeaks.map(h => (
+              <span key={h.hour} className={`badge ${h.multiplier >= 1.5 ? "badge-danger" : "badge-warning"}`} style={{ textTransform: "none" }}>
+                {h.hour.toString().padStart(2, "0")}:00 — ×{h.multiplier} {h.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Create ride (driver side) */}
       <div className="glass-card" style={{ padding: 24, marginBottom: 32 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 16 }}>➕ Offer a Ride</h3>
-        <form onSubmit={createRide} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px auto", gap: 16, alignItems: "end" }}>
+        <form onSubmit={createRide} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px 120px auto", gap: 16, alignItems: "end" }}>
           <div className="input-group">
             <label className="input-label">From (hotspot)</label>
             <select className="input select" required value={form.source} onChange={e => setForm({ ...form, source: e.target.value })}>
@@ -245,6 +322,10 @@ export default function RidesPage() {
           <div className="input-group">
             <label className="input-label">Base fare (৳)</label>
             <input className="input" type="number" min="10" step="5" required placeholder="e.g. 100" value={form.base_fare} onChange={e => setForm({ ...form, base_fare: e.target.value })} />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Seats</label>
+            <input className="input" type="number" min="1" max="10" required value={form.total_seats} onChange={e => setForm({ ...form, total_seats: e.target.value })} />
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? "Creating..." : "Create Ride"}</button>
         </form>

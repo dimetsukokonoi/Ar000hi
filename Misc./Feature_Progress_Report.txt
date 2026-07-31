@@ -1,0 +1,123 @@
+Arooohi Feature Progress Report
+Date: 2026-07-31
+
+SRS Requirements Reviewed:
+- Trusted Contact Sharing (FR-7 / Feature 12)
+- Ride Cost Splitter (Feature 5)
+- Peak Hour Surge Indicator (FR-9 / Feature 13)
+- Ride Chat (FR-8 / Feature 15)
+- Eco/Footprint Tracker (FR-12 / Feature 20)
+
+Implementation Status:
+
+1) Trusted Contact Sharing
+Status: Partially complete / demo-ready
+What exists:
+- Contact CRUD in backend routes/contacts.py
+- Contact UI in frontend/app/dashboard/contacts/page.tsx
+- Auto-share endpoint is present but only console-mock delivery
+What is missing:
+- real SMS/email/push provider integration
+- stronger ride share event hooks
+- contact verification workflow
+
+2) Ride Cost Splitter
+Status: Complete for a demo, incomplete for full business logic
+What exists:
+- backend/app/routes/rides.py split endpoint
+- frontend rides page renders split breakdown
+What is missing:
+- seat occupancy and price rule enforcement
+- driver payout logic
+- cancellation/refund logic
+- participant-only authorization
+- better ride fare policy handling
+
+3) Peak Hour Surge Indicator
+Status: Functional demo
+What exists:
+- backend/app/routes/surge.py dynamic multiplier based on time + active rides
+- rides page displays current surge badge
+What is missing:
+- richer schedule explanation
+- stronger demand prediction model
+- UI for future-hour planning and alerting
+
+4) Ride Chat
+Status: Functional MVP
+What exists:
+- WebSocket chat endpoint in backend/app/routes/chat.py
+- Persisted messages in chat_messages table
+- frontend chat page ready for ride-scoped messaging
+What is missing:
+- typing indicators / read receipts / online status
+- moderation and spam safeguards
+- reconnect UX improvements
+- stronger error states and participant membership checks
+
+5) Eco/Footprint Tracker
+Status: Functional demo metric
+What exists:
+- eco stats endpoint in backend/app/routes/eco.py
+- eco tracker page in frontend/app/dashboard/eco/page.tsx
+What is missing:
+- calibrated per-vehicle emissions model
+- stronger accuracy using route-specific distance and occupancy
+- better comparison/leaderboard and explanation
+
+Critical Problems Found:
+- Security/access controls around ride split and ride detail endpoints need tightening.
+- Notification delivery is still mock-based and cannot satisfy a real safety use case.
+- The backend architecture is still demo-oriented and not aligned to SRS production requirements.
+- Some SRS features are not present at all (female-only filter, booking, multi-stop, wallet, ratings, advanced matching, and payment logic).
+
+Recommended Next Actions:
+1. Secure participant-only access to split/chat endpoints.
+2. Replace console-mock notifications with real provider integration.
+3. Add rule-based ride lifecycle validation.
+4. Add SRS-aligned missing features in a planned phased roadmap.
+5. Move from SQLite/demonstration data structure toward the SRS-intended PostgreSQL/PostGIS + cloud storage architecture.
+
+Priority Order:
+P1 - access control, notification delivery, ride lifecycle integrity
+P2 - ride matching and ride policy features
+P3 - wallet, ratings, admin reporting, schedule and multi-stop support
+P4 - production-scale database and deployment architecture
+
+Overall Judgment:
+The codebase is a promising demonstration of the requested product features, but it remains a prototype-level implementation rather than a complete SRS-compliant production system.
+
+-------------------------------------------------------------------
+SESSION 9 UPDATE (2026-07-31, evening) — hardening pass completed
+-------------------------------------------------------------------
+Items from the "missing" lists above that were ADDRESSED in the Session 9
+security/correctness pass (authored by Ornab via an opencode/CD agent):
+
+- Cost splitter: seat occupancy is now enforced (join capacity check against
+  rides.total_seats, default 4) and participant-only authorization for split
+  was already in place; split is seat-weighted with exact paisa rounding.
+- Ride chat: participant membership checks (4403) + spam safeguards (20 msgs/10s,
+  close 4429) + message length cap (500) + fatal-error states (4401/4403) in the UI.
+- Peak hour surge: schedule is now surfaced in the rides UI with per-hour labels
+  and an exact "current hour" marker (is_current), plus upcoming-peak preview.
+- Trusted contact sharing: auto-share now persists to a contact_shares table and
+  a share-history view is exposed (still mock delivery).
+- Eco tracker: added top-10 leaderboard and NULL-distance guard; UI error states.
+- Cross-feature safety fixes: rate limiting for login/OTP, DEMO-gated OTP hint,
+  account-active check, 32-hex share token, owner-only tracking session read,
+  404 on missing SOS resolve, drivers status filter, MIME-derived upload extension,
+  ride-end distance from full tracking path, WAL + FK indexes, frontend GPS
+  double-post and interval-leak fixes, map auto-follow/re-center.
+
+Still NOT addressed (unchanged):
+- Real SMS/email/push provider integration (console-mock only).
+- Driver payout, cancellation/refund logic.
+- Stronger demand-prediction model.
+- Typing indicators / read receipts / online status in chat.
+- Calibrated per-vehicle emissions model.
+- Missing features: female-only filter, booking, multi-stop, wallet, ratings,
+  advanced matching, payment logic.
+- Production-scale PostgreSQL/PostGIS + cloud storage architecture.
+
+Verification (Session 9): backend 54/54 checks green (throwaway DB), live API
+smoke green, tsc/lint/build clean. Regression script at /tmp/opencode/test_backend.py.

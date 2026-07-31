@@ -11,13 +11,28 @@ interface ContactInfo {
   created_at?: string;
 }
 
+interface ShareRecord {
+  id: string;
+  share_url: string;
+  session_id?: string | null;
+  contact_count: number;
+  created_at: string;
+}
+
 export default function TrustedContactsPage() {
   const [contacts, setContacts] = useState<ContactInfo[]>([]);
+  const [shares, setShares] = useState<ShareRecord[]>([]);
   const [form, setForm] = useState({ contact_name: "", contact_phone: "", contact_email: "" });
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  const showNotice = (type: "success" | "error", text: string) => {
+    setNotice({ type, text });
+    setTimeout(() => setNotice(null), 5000);
+  };
 
   // Ornab: contacts now persist in the backend trusted_contacts table so the
   // SOS alert flow (which reads from the DB) actually notifies these contacts.
@@ -29,6 +44,10 @@ export default function TrustedContactsPage() {
       .then(data => { if (Array.isArray(data)) setContacts(data); })
       .catch(err => console.error("Failed to load contacts:", err))
       .finally(() => setLoading(false));
+    fetch(`${API}/contacts/shares`, { headers })
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setShares(data); })
+      .catch(() => {});
   }, [token]);
 
   const addContact = async (e: React.FormEvent) => {
@@ -42,10 +61,12 @@ export default function TrustedContactsPage() {
         setForm({ contact_name: "", contact_phone: "", contact_email: "" });
         setShowForm(false);
         setContacts(prev => [...prev, { ...data.contact }]);
+        showNotice("success", data.message || "Contact added");
       } else {
-        alert(data.detail || "Failed to add contact");
+        showNotice("error", data.detail || "Failed to add contact");
       }
     } catch (err) {
+      showNotice("error", "Network error — could not add contact");
       console.error("Add contact failed:", err);
     }
   };
@@ -72,6 +93,19 @@ export default function TrustedContactsPage() {
           {showForm ? "✕ Cancel" : "+ Add Contact"}
         </button>
       </div>
+
+      {notice && (
+        <div style={{
+          padding: "12px 16px",
+          borderRadius: "var(--radius-md)",
+          fontSize: "0.85rem",
+          marginBottom: 20,
+          background: notice.type === "success" ? "var(--success-muted)" : "var(--danger-muted)",
+          color: notice.type === "success" ? "var(--success)" : "var(--danger)",
+        }}>
+          {notice.text}
+        </div>
+      )}
 
       {showForm && (
         <div className="glass-card" style={{ padding: 24, marginBottom: 24, animation: "fadeInUp 0.3s ease" }}>
@@ -114,6 +148,21 @@ export default function TrustedContactsPage() {
               <button className="btn btn-ghost btn-sm" onClick={() => removeContact(c.id)} style={{ color: "var(--danger)" }}>
                 Remove
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Share history (Feature 12 improvement — auditable auto-share log) */}
+      {shares.length > 0 && (
+        <div className="glass-card" style={{ padding: 20, marginTop: 24 }}>
+          <h3 style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: 12 }}>📤 Recent Ride Shares</h3>
+          {shares.map(s => (
+            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid rgba(100,120,200,0.06)", fontSize: "0.85rem" }}>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {new Date(s.created_at).toLocaleString()} · {s.contact_count} contact(s) notified
+              </span>
+              <code style={{ fontSize: "0.75rem", color: "var(--primary)" }}>{s.share_url}</code>
             </div>
           ))}
         </div>

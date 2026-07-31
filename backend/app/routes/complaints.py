@@ -26,7 +26,11 @@ class UpdateComplaintRequest(BaseModel):
 
 @router.post("/")
 def create_complaint(body: CreateComplaintRequest, user_id: str = Depends(get_current_user_id)):
-    """File a new complaint."""
+    """File a new complaint.
+
+    Improvement note:
+    - This shared admin moderation API is now stricter about complaint content before it reaches the moderator queue.
+    """
     if body.category not in ("safety", "misconduct", "vehicle", "payment", "other"):
         raise HTTPException(status_code=400, detail="Invalid complaint category")
 
@@ -34,6 +38,12 @@ def create_complaint(body: CreateComplaintRequest, user_id: str = Depends(get_cu
         raise HTTPException(status_code=400, detail="Subject and description are required")
 
     conn = get_db()
+    if body.reported_id:
+        reported = conn.execute("SELECT id FROM users WHERE id = ?", (body.reported_id,)).fetchone()
+        if not reported:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Reported user not found")
+
     complaint_id = str(uuid.uuid4())
 
     conn.execute(

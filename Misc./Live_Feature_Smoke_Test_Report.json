@@ -1,0 +1,16 @@
+{
+  "feature_checks": {
+    "bracu_verification": true,
+    "driver_verification_status_endpoint": true,
+    "trusted_contact": true,
+    "tracking_and_share": true,
+    "sos": true,
+    "ride_create_join_accept": true,
+    "ride_start_end": true,
+    "cost_split": true,
+    "chat_history": true,
+    "eco_tracker": true,
+    "surge_indicator": true,
+    "complaint_panel": true
+  }
+}

@@ -40,7 +40,7 @@ def trigger_sos(body: SOSRequest, user_id: str = Depends(get_current_user_id)):
         for c in contacts
     ]
 
-    # Always include campus security
+    # Always include campus security as the safety fallback for the emergency workflow.
     contacts_list.append({
         "name": "BRACU Campus Security",
         "phone": "01700000000",
@@ -110,6 +110,11 @@ def resolve_sos(alert_id: str, body: dict, admin_id: str = Depends(require_admin
         raise HTTPException(status_code=400, detail="Status must be 'resolved' or 'false_alarm'")
 
     conn = get_db()
+    alert = conn.execute("SELECT id FROM sos_alerts WHERE id = ?", (alert_id,)).fetchone()
+    if not alert:
+        conn.close()
+        raise HTTPException(status_code=404, detail="SOS alert not found")
+
     from datetime import datetime
     conn.execute(
         "UPDATE sos_alerts SET status = ?, resolved_at = ? WHERE id = ?",

@@ -199,7 +199,7 @@ input, textarea, select, button { font-family: inherit; font-size: inherit; }
 .otp-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-muted); }
 
 /* Map */
-.map-container { width:100%; height:500px; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--surface-border); }
+.map-container { width:100%; height:500px; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--surface-border); position:relative; }
 
 /* Complaint */
 .complaint-card { padding:24px; margin-bottom:16px; }

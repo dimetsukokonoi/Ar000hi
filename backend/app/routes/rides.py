@@ -7,6 +7,14 @@ Arooohi Backend — Rides Core Routes
   - Eco/Footprint Tracker (distance + occupancy per completed ride)
 NOTE: This is a MINIMAL ride model for demo purposes. Full matching/booking
 (SRS Sprint 2) is a separate teammate module and can build on these tables.
+
+Improvements in this pass (cross-agent, 2026-07-31):
+- Ride Cost Splitter: seat-aware split + whole-taka largest-remainder rounding so
+  the per-person shares always sum exactly to the total fare (PROJECT_PLAN §6.2).
+- Join: seat count validated against ride capacity (`total_seats`).
+- end_ride: distance now measured over the FULL path of the rider's most recent
+  inactive tracking session (sum of consecutive legs), not the first 2 points of
+  any old session.
 """
 import uuid
 import math
@@ -48,15 +56,28 @@ def _estimate_distance_km(source: str, destination: str) -> float:
     return 5.0  # default demo distance
 
 
+def _path_length_km(points) -> float:
+    """Sum of consecutive haversine legs over an ordered list of (lat, lng) points."""
+    pts = [(p["lat"], p["lng"]) for p in points]
+    if len(pts) < 2:
+        return 0.0
+    return sum(_haversine_km(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+
+
 class CreateRideRequest(BaseModel):
     source: str
     destination: str
     base_fare: float
+    total_seats: int = 4
     scheduled_at: str | None = None
 
 
 class JoinRideRequest(BaseModel):
     seats: int = 1
+
+    def model_post_init(self, __context):
+        if self.seats < 1:
+            raise ValueError("seats must be at least 1")
 
 
 class EndRideRequest(BaseModel):
@@ -79,25 +100,33 @@ def create_ride(body: CreateRideRequest, user_id: str = Depends(get_current_user
         conn.close()
         raise HTTPException(status_code=400, detail="base_fare must be positive")
 
+    if body.total_seats < 1 or body.total_seats > 10:
+        conn.close()
+        raise HTTPException(status_code=400, detail="total_seats must be between 1 and 10")
+
     # Capture the current surge multiplier so the cost splitter reflects live pricing.
     surge, _, _ = compute_current_multiplier(conn)
 
     ride_id = str(uuid.uuid4())
     conn.execute(
-        """INSERT INTO rides (id, driver_id, source, destination, base_fare, surge_multiplier, scheduled_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO rides (id, driver_id, source, destination, base_fare, surge_multiplier, total_seats, scheduled_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (ride_id, user_id, body.source.strip(), body.destination.strip(),
-         round(body.base_fare, 2), surge, body.scheduled_at)
+         round(body.base_fare, 2), surge, body.total_seats, body.scheduled_at)
     )
     conn.commit()
     conn.close()
 
-    return {"message": "Ride created", "ride_id": ride_id, "status": "scheduled", "surge_multiplier": surge}
+    return {"message": "Ride created", "ride_id": ride_id, "status": "scheduled", "surge_multiplier": surge, "total_seats": body.total_seats}
 
 
 @router.post("/{ride_id}/join")
 def join_ride(ride_id: str, body: JoinRideRequest, user_id: str = Depends(get_current_user_id)):
-    """Rider requests a seat on a scheduled/active ride."""
+    """Rider requests a seat on a scheduled/active ride.
+
+    Improvement note:
+    - Seat requests are now constrained to a positive seat count to keep the rider-side ride sharing flow consistent with the split-cost model.
+    """
     conn = get_db()
     ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
     if not ride:
@@ -109,6 +138,23 @@ def join_ride(ride_id: str, body: JoinRideRequest, user_id: str = Depends(get_cu
     if ride["driver_id"] == user_id:
         conn.close()
         raise HTTPException(status_code=400, detail="You cannot join your own ride")
+    if body.seats < 1:
+        conn.close()
+        raise HTTPException(status_code=400, detail="seats must be at least 1")
+
+    # Capacity check: seats already taken (accepted/requested) + this request.
+    taken = conn.execute(
+        """SELECT COALESCE(SUM(seats), 0) AS s FROM ride_passengers
+           WHERE ride_id = ? AND status IN ('requested', 'accepted')""",
+        (ride_id,)
+    ).fetchone()["s"]
+    capacity = ride["total_seats"] or 4
+    if taken + body.seats > capacity:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough seats. This ride has {capacity} seats and {taken} are taken."
+        )
 
     existing = conn.execute(
         "SELECT id FROM ride_passengers WHERE ride_id = ? AND passenger_id = ? AND status IN ('requested','accepted')",
@@ -189,18 +235,23 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
     distance = body.distance_km
     if distance is None:
         # Prefer distance travelled via GPS tracking points, else zone-based estimate.
-        points = conn.execute(
-            """SELECT lat, lng FROM tracking_points tp
-               JOIN tracking_sessions ts ON tp.session_id = ts.id
-               WHERE ts.user_id = ? AND ts.is_active = 0
-               ORDER BY tp.created_at ASC LIMIT 2""",
+        # Fix (§6.2): use the driver's MOST RECENT inactive session and sum the FULL
+        # path length (all legs), instead of the gap between the 2 oldest points of
+        # any old session.
+        session = conn.execute(
+            """SELECT id FROM tracking_sessions
+               WHERE user_id = ? AND is_active = 0
+               ORDER BY created_at DESC LIMIT 1""",
             (user_id,)
-        ).fetchall()
-        if len(points) >= 2:
-            distance = _haversine_km((points[0]["lat"], points[0]["lng"]),
-                                     (points[-1]["lat"], points[-1]["lng"]))
-        else:
-            distance = _estimate_distance_km(ride["source"], ride["destination"])
+        ).fetchone()
+        points = []
+        if session:
+            points = conn.execute(
+                "SELECT lat, lng FROM tracking_points WHERE session_id = ? ORDER BY created_at ASC",
+                (session["id"],)
+            ).fetchall()
+        path = _path_length_km(points)
+        distance = path if path > 0.0 else _estimate_distance_km(ride["source"], ride["destination"])
 
     from datetime import datetime as dt
     conn.execute(
@@ -252,6 +303,7 @@ def list_rides(user_id: str = Depends(get_current_user_id)):
             "distance_km": ride["distance_km"],
             "base_fare": ride["base_fare"],
             "surge_multiplier": ride["surge_multiplier"],
+            "total_seats": ride["total_seats"],
             "scheduled_at": ride["scheduled_at"],
             "started_at": ride["started_at"],
             "ended_at": ride["ended_at"],
@@ -304,6 +356,7 @@ def get_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
         "distance_km": ride["distance_km"],
         "base_fare": ride["base_fare"],
         "surge_multiplier": ride["surge_multiplier"],
+        "total_seats": ride["total_seats"],
         "scheduled_at": ride["scheduled_at"],
         "started_at": ride["started_at"],
         "ended_at": ride["ended_at"],
@@ -323,7 +376,15 @@ def get_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
 
 @router.get("/{ride_id}/split")
 def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    """Ride Cost Splitter — total = base_fare x surge; split evenly among accepted passengers.
+    """Ride Cost Splitter — total = base_fare x surge; split by SEATS among accepted
+    passengers, with whole-taka largest-remainder rounding so shares sum exactly
+    to `total`.
+
+    Improvement note:
+    - Access is now restricted to the driver or an accepted ride participant.
+    - A passenger booking N seats pays N shares (seat-aware split).
+    - Largest-remainder pass fixes the rounding drift from the old
+      `round(total / n, 2)` per person (PROJECT_PLAN.md §6.2).
     (SRS Feature 5)"""
     conn = get_db()
     ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
@@ -331,16 +392,35 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
         conn.close()
         raise HTTPException(status_code=404, detail="Ride not found")
 
+    is_driver = ride["driver_id"] == user_id
+    participant = conn.execute(
+        "SELECT id FROM ride_passengers WHERE ride_id = ? AND passenger_id = ? AND status IN ('accepted', 'completed')",
+        (ride_id, user_id)
+    ).fetchone()
+    if not is_driver and not participant:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only ride participants can view fare split details")
+
     accepted = conn.execute(
-        """SELECT u.name FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
+        """SELECT rp.id, rp.passenger_id, rp.seats, u.name
+           FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
            WHERE rp.ride_id = ? AND rp.status IN ('accepted', 'completed')""",
         (ride_id,)
     ).fetchall()
     conn.close()
 
     total = round(ride["base_fare"] * ride["surge_multiplier"], 2)
-    passenger_count = len(accepted)
-    per_person = round(total / passenger_count, 2) if passenger_count > 0 else None
+    seat_weights = [max(int(r["seats"]), 1) for r in accepted]
+    total_seats = sum(seat_weights)
+    seat_shares = _split_total(total, total_seats) if total_seats > 0 else []
+
+    breakdown = []
+    share_idx = 0
+    for r in accepted:
+        weight = max(int(r["seats"]), 1)
+        share = round(sum(seat_shares[share_idx:share_idx + weight]), 2)
+        share_idx += weight
+        breakdown.append({"passenger": r["name"], "seats": weight, "share": share})
 
     return {
         "ride_id": ride_id,
@@ -349,13 +429,26 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
         "base_fare": ride["base_fare"],
         "surge_multiplier": ride["surge_multiplier"],
         "total": total,
-        "passenger_count": passenger_count,
-        "per_person": per_person,
-        "breakdown": [
-            {"passenger": p["name"], "share": per_person if per_person else 0}
-            for p in accepted
-        ],
+        "total_seats": total_seats,
+        "passenger_count": len(accepted),
+        "per_seat": round(seat_shares[0], 2) if seat_shares else None,
+        "breakdown": breakdown,
     }
+
+
+def _split_total(total: float, parts: int) -> list[float]:
+    """Largest-remainder split at paisa (0.01 taka) resolution so the parts sum
+    EXACTLY to `total`. Fixes the rounding drift of naive `round(total / n, 2)`.
+    Example: 130 / 3 -> [43.34, 43.33, 43.33] (sums to 130.00)."""
+    if parts <= 0:
+        return []
+    total_paisa = round(total * 100)
+    base = total_paisa // parts
+    remainder = total_paisa - base * parts
+    shares = [round(base / 100.0, 2)] * parts
+    for i in range(remainder):
+        shares[i] = round((base + 1) / 100.0, 2)
+    return shares
 
 
 @router.get("/{ride_id}/messages")

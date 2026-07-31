@@ -21,9 +21,12 @@ Backed by the existing `trusted_contacts` table. Used by the SOS flow (which rea
 | GET | `/api/contacts` | yes | — | `[{ id, contact_name, contact_phone, contact_email, created_at }]` |
 | POST | `/api/contacts` | yes | `{ contact_name, contact_phone, contact_email? }` | `{ message, contact: { id, ... } }` |
 | DELETE | `/api/contacts/{contact_id}` | yes | — | `{ message }` |
-| POST | `/api/contacts/auto-share` | yes | `{ share_url, session_id? }` | `{ message, share_url, contacts_notified }` |
+| POST | `/api/contacts/auto-share` | yes | `{ share_url, session_id? }` | `{ message, share_url, contacts_notified, share_id }` |
+| GET | `/api/contacts/shares` | yes | — | `[{ share_id, share_url, contact_count, created_at }]` |
 
-`auto-share` mocks delivery (console log) — same pattern as SOS. Replace with real SMS/push in production.
+- Phone numbers must be BD format (`^01\d{9}$`).
+- `auto-share` persists a row in the new `contact_shares` table (a visible share history) **and** mocks delivery to each trusted contact (console log) — same pattern as SOS. Replace with real SMS/push in production.
+- `GET /api/contacts/shares` lists the current user's share history (most recent first).
 
 ---
 
@@ -33,9 +36,9 @@ Minimal ride lifecycle. New tables: `rides`, `ride_passengers`. Full matching/bo
 
 | Method | Path | Auth | Body | Returns |
 |---|---|---|---|---|
-| POST | `/api/rides` | yes | `{ source, destination, base_fare, scheduled_at? }` | `{ message, ride_id, status, surge_multiplier }` |
+| POST | `/api/rides` | yes | `{ source, destination, base_fare, total_seats?, scheduled_at? }` | `{ message, ride_id, status, surge_multiplier, total_seats }` |
 | GET | `/api/rides` | yes | — | `{ mine: [ride...], available: [ride...] }` |
-| GET | `/api/rides/{ride_id}` | yes | — | ride detail incl. `passengers[]` |
+| GET | `/api/rides/{ride_id}` | yes | — | ride detail incl. `passengers[]` and `total_seats` |
 | POST | `/api/rides/{ride_id}/join` | yes | `{ seats? }` | `{ message, passenger_id, status }` |
 | POST | `/api/rides/{ride_id}/accept/{passenger_id}` | driver | — | `{ message }` |
 | POST | `/api/rides/{ride_id}/start` | driver | — | `{ message, status }` |
@@ -44,22 +47,27 @@ Minimal ride lifecycle. New tables: `rides`, `ride_passengers`. Full matching/bo
 | GET | `/api/rides/{ride_id}/messages` | participant | — | `[{ id, sender_id, sender_name, message, created_at }]` |
 
 Notes:
-- **create** captures the current surge multiplier into the ride.
-- **end** estimates distance from GPS tracking points, else from a BRACU zone lookup (`ZONES` in `rides.py`), else 5 km default.
+- **create** captures the current surge multiplier into the ride; `total_seats` defaults to 4.
+- **join** is seat-aware: `seats + already-accepted seats` must be `<= total_seats`, else `409` "not enough seats". Passengers requesting more seats than remaining get the error.
+- **end** estimates distance from the **full path length** of the most recent inactive GPS tracking session, else from a BRACU zone lookup (`ZONES` in `rides.py`), else 5 km default.
 - Ride status flow: `scheduled -> active -> completed` (or `cancelled`, reserved for future).
 - Any verified user can create a ride for demo purposes.
 
 ### Cost Splitter — `GET /api/rides/{ride_id}/split`
-Formula: `total = base_fare x surge_multiplier`; `per_person = total / accepted_passengers` (driver excluded).
+Formula: `total = base_fare x surge_multiplier`; share split is **seat-weighted** across accepted passengers (driver excluded).
 
 ```json
 {
   "ride_id": "...", "source": "Gate 1", "destination": "Library",
   "base_fare": 100.0, "surge_multiplier": 1.3,
-  "total": 130.0, "passenger_count": 2, "per_person": 65.0,
-  "breakdown": [ { "passenger": "Rider A", "share": 65.0 }, { "passenger": "Rider B", "share": 65.0 } ]
+  "total": 130.0, "passenger_count": 2,
+  "per_seat": 43.33, "total_seats": 3,
+  "breakdown": [ { "passenger": "Rider A", "share": 86.67, "seats": 2 }, { "passenger": "Rider B", "share": 43.33, "seats": 1 } ]
 }
 ```
+
+- `per_seat = total / sum(all passenger seats)`; each passenger pays `per_seat x seats`.
+- Splitting uses **largest-remainder (paisa) rounding** so the breakdown always sums to exactly `total` (no cent loss).
 
 ---
 
@@ -68,11 +76,12 @@ Formula: `total = base_fare x surge_multiplier`; `per_person = total / accepted_
 New table `surge_config` (24 seeded hourly baselines). Multiplier = baseline + live ride volume bump, clamped 1.0–2.0.
 
 | Method | Path | Auth | Returns |
-|---|---|---|---|
+|---|---|---|---|---|
 | GET | `/api/surge/current` | yes | `{ hour, demand, active_rides, multiplier, label, message }` |
-| GET | `/api/surge/schedule` | yes | `{ schedule: [{ hour, demand, multiplier, label }...] }` (24 entries) |
+| GET | `/api/surge/schedule` | yes | `{ schedule: [{ hour, demand, multiplier, label, is_current }...] }` (24 entries) |
 
 `label`: `Normal` (1.0) / `Elevated` (1.1–1.2) / `High` (1.3–1.4) / `Peak` (>=1.5).
+`is_current`: `true` for exactly one entry — the current hour — and the live active-ride bump is applied **only** to that entry.
 
 ---
 
@@ -90,13 +99,16 @@ New table `chat_messages`. Chat is scoped to a ride; only the **driver and accep
 ```
 Close codes: `4401` bad/expired token, `4403` not a ride participant.
 
+Rate limits: spam guard allows at most **20 messages per 10 seconds** per user (excess gets close code `4429`); messages are capped at 500 characters.
+
 ---
 
 ## 5. Eco/Footprint Tracker  (`/api/eco`)
 
 | Method | Path | Auth | Returns |
-|---|---|---|---|
+|---|---|---|---|---|
 | GET | `/api/eco/stats` | yes | see below |
+| GET | `/api/eco/leaderboard` | yes | `[{ rank, user_id, name, total_km, total_saved_kg, trips }]` (top 10 by distance) |
 
 ```json
 {
