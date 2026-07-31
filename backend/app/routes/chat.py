@@ -119,11 +119,14 @@ async def ride_chat_ws(websocket: WebSocket, ride_id: str):
             if len(message) > 500:
                 message = message[:500]
             if not _allow_message(user_id):
+                # Spam guard exceeded (API.md: 20 msgs / 10 s) — close 4429 so the
+                # client stops sending; the per-user counter persists across reconnects.
                 await websocket.send_text(json.dumps({
                     "error": "Slow down — message rate limit reached.",
                     "type": "rate_limited",
                 }))
-                continue
+                await websocket.close(code=4429)
+                break
 
             msg_id = str(uuid.uuid4())
             created_at = datetime.utcnow().isoformat()
@@ -145,6 +148,7 @@ async def ride_chat_ws(websocket: WebSocket, ride_id: str):
                 "created_at": created_at,
             }
             await manager.broadcast(ride_id, payload)
+        manager.disconnect(ride_id, websocket)
     except WebSocketDisconnect:
         manager.disconnect(ride_id, websocket)
     except Exception:
