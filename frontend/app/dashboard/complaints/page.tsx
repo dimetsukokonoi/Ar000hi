@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 
 interface Complaint {
   id: string;

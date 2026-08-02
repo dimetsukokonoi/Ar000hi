@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 
 interface SessionInfo {
   session_id: string;

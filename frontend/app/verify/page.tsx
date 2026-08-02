@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 
 export default function VerifyPage() {
   const router = useRouter();

@@ -2,8 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 
-const API = "http://localhost:8000/api";
-const WS = "ws://localhost:8000/ws";
+import { API, WS } from "@/lib/api";
 
 interface ChatMessage {
   id: string;

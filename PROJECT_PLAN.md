@@ -137,9 +137,11 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ❌ **`requirements.txt` stale** — refresh pins to the tested versions.
 - ⏳ **No automated tests in repo** — regression script at `/tmp/opencode/test_backend.py` (54 checks, throwaway DB); port into `backend/tests/` pytest suite.
 - ⏳ **Live e2e harness not committed (Session 10)** — Playwright suite at `/tmp/opencode/e2e/live-test.js` (45 checks, 45/45 green); port into a `backend/` or `e2e/` folder for CI.
+- ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run the Playwright suite against BOTH engines to prove it, and add the frontend feature-map as a `/demo` page.
 - ❌ **Mock notifications scattered** — consolidate into a `notifications.py` service.
 - ❌ **Hardcoded `ZONES` in `rides.py`** — move to a seeded table (unlocks #6/#14).
-- ❌ **Frontend `API` const duplicated** — centralize in `lib/api.ts` with `NEXT_PUBLIC_API_URL` + 401→login redirect.
+- ✅ **Frontend `API` const duplicated** — centralized in `lib/api.ts` (`API`/`WS`/`API_BASE`, overridable via `NEXT_PUBLIC_API_URL`); all pages import from it. With this, switched everything to explicit IPv4 `127.0.0.1` (backend binds 127.0.0.1, CORS allows both `localhost:3000` and `127.0.0.1:3000`, tracking share URLs use `127.0.0.1`) — fixes the gecko-only failure caused by `localhost`→`::1` (IPv6) when the backend binds IPv4-only.
+- ✅ **One-command launcher** — `./launch.py` / `./launch.sh` / `launch.bat`: starts backend+frontend, renders the logo, opens the site fullscreen (F11 to toggle, `--windowed` to skip), auto-stops + WAL-checkpoints the DB when the browser closes, plus `--no-browser`/`--browser chrome|firefox`/`--detect`/`status`/`stop`. Cross-platform (pure stdlib; tested on Linux, code-reviewed for macOS/Windows).
 
 ### 6.4 Frontend bugs & UX (🟡)
 - ✅ **Tracking page: duplicate point sources + leak on unmount** — `dashboard/page.tsx`. Single `recordPoint`, `sessionRef` guard, unmount cleanup, `headers` memoized.
@@ -168,4 +170,4 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - Log each session in `.arooohi-dev/SESSION.md`; keep `.arooohi-dev/HISTORY.md` in sync.
 - Never commit `.arooohi-dev/`, `backend/.venv/`, `__pycache__/`, `*.pyc`, or local DB churn.
 - ⚠ Next.js 16 has breaking changes — read `node_modules/next/dist/docs/` before writing frontend code.
-- Browse the app via `http://localhost:3000` (backend CORS only allows localhost:3000, not 127.0.0.1).
+- The app is run via the launcher: `./launch.sh` (or `python3 launch.py` / `launch.bat` on Windows). It uses explicit IPv4 `127.0.0.1` everywhere (site at `http://127.0.0.1:3000`, API at `http://127.0.0.1:8000`) so it behaves identically in Chromium and Firefox. CORS allows both `localhost:3000` and `127.0.0.1:3000`.

@@ -1,7 +1,7 @@
 # Arooohi — Progress Report
 
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf`. Roadmap + backlog: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
-> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-07-31.
+> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-08-03.
 
 ## 1. Overall
 
@@ -64,12 +64,22 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 - `npx tsc --noEmit` — **clean**.
 - `npm run build` — **success, all routes compile**.
 
-### Runtime state (checked this session)
-- Backend `:8000` (now with `--reload`) and frontend `:3000` both **running**.
+### Runtime state (checked recent sessions)
+- **One-command launcher (Session 12):** `./launch.py` / `./launch.sh` / `launch.bat`
+  boot backend + frontend, render the Arooohi logo, open the site fullscreen in the
+  default browser, and auto-stop + WAL-checkpoint the DB when the browser closes.
+  The app uses explicit IPv4 `127.0.0.1` (`frontend/lib/api.ts` `API`/`WS`/`API_BASE`;
+  CORS allows `localhost:3000` + `127.0.0.1:3000`) — fixes a gecko/Firefox
+  `localhost`→IPv6-`::1` failure. Desktop-installer attempt (Session 13) was reverted.
+- Backend `:8000` (with `--reload`) and frontend `:3000` were **running**; the app is
+  started/stopped with the launcher.
 - `arooohi.db`: carries live user/test data (driver approved, completed ride,
   resolved SOS/complaint) — kept for the demo; pre-test backup at
   `Misc./arooohi.db.backup-20260731-214145`.
-- `git status` — **clean**; all Session-9/10 changes committed (HEAD `6ee4216`).
+- `git status` — working tree has Session-12 work **uncommitted** (HEAD `ba43984`):
+  `launch.py`/`launch.sh`/`launch.bat`, `scripts/ascii_logo.py`,
+  `frontend/lib/api.ts` + the 15 page edits, `frontend/package.json`, backend CORS +
+  tracking share-URL changes, and `PROJECT_PLAN.md` notes.
 
 ### Live browser test (Session 10, Playwright)
 - Full end-to-end run of the live UI on both running servers: **45/45 passed,
@@ -140,11 +150,11 @@ features in §2.
 
 ## 8. Next actions (priority order)
 
-1. ✅ (Done) Commit Session-9/10 changes — HEAD `6ee4216` (user commit `e9d92cc` +
-   docs commit), working tree clean; 45/45 live browser tests pass, screenshots in
-   `demo/live-test-screenshots/`.
-2. Ship the cheap wins: Female-Only Mode (#3), Earnings (#16), Ride History (#10).
-3. Add committed pytest suite (regression script at `/tmp/opencode/test_backend.py`)
-   and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`).
-4. Upgrade live tracking to WebSockets (NFR-1).
-5. Continue remaining features per `PROJECT_PLAN.md` §4.
+1. ✅ Done (Sessions 9–13) — see HISTORY/PLAN. Live-browser tests 45/45 (Session 10);
+   cross-platform launcher + IPv4 fix (Session 12); desktop-installer attempt reverted (Session 13).
+2. Commit the Session-12 launcher + IPv4 work (currently uncommitted) when the team is ready.
+3. Ship the cheap wins: Female-Only Mode (#3), Earnings (#16), Ride History (#10).
+4. Add a committed pytest suite (regression script at `/tmp/opencode/test_backend.py`)
+   and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`); run it against BOTH engines.
+5. Upgrade live tracking to WebSockets (NFR-1).
+6. Continue remaining features per `PROJECT_PLAN.md` §4.

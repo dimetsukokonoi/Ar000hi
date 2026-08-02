@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 const HOTSPOTS = ["Gate 1", "Gate 2", "Gate 3", "Library", "Cafeteria", "UB Building", "Residential", "Mohakhali", "Banani", "Gulshan"];
 
 interface RideInfo {

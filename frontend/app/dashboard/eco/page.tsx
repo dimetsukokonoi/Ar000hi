@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 
 interface EcoRide {
   ride_id: string;

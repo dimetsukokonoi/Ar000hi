@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 
-const API = "http://localhost:8000/api";
+import { API, API_BASE } from "@/lib/api";
 
 interface DriverApp {
   id: string;
@@ -108,7 +108,7 @@ export default function AdminDriversPage() {
                 ].map(doc => (
                   <a
                     key={doc.label}
-                    href={`http://localhost:8000${doc.url}`}
+                    href={`${API_BASE}${doc.url}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn btn-sm btn-secondary"

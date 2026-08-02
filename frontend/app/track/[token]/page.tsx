@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
-const API = "http://localhost:8000/api";
+import { API } from "@/lib/api";
 
 interface TrackingPoint {
   lat: number;

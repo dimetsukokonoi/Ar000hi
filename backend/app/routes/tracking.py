@@ -50,7 +50,7 @@ def start_tracking_session(user_id: str = Depends(get_current_user_id)):
     return {
         "session_id": session_id,
         "share_token": share_token,
-        "share_url": f"http://localhost:3000/track/{share_token}",
+        "share_url": f"http://127.0.0.1:3000/track/{share_token}",
         "message": "Tracking session started"
     }
 
@@ -178,7 +178,7 @@ def get_active_session(user_id: str = Depends(get_current_user_id)):
         "session": {
             "id": session["id"],
             "share_token": session["share_token"],
-            "share_url": f"http://localhost:3000/track/{session['share_token']}",
+            "share_url": f"http://127.0.0.1:3000/track/{session['share_token']}",
             "created_at": session["created_at"],
         }
     }
