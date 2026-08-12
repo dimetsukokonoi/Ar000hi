@@ -16,23 +16,23 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 |---|---------|--------|-------|
 | 1 | BRACU Student Verification | ✅ | `@g.bracu.ac.bd` + 6-digit OTP (demo: OTP shown in UI/console) |
 | 2 | Live GPS Ride Tracking | ✅ | 5s polling via `/track/[token]`, share link + live map |
-| 3 | Female-Only Ride Mode | ❌ | `users.gender` exists; no filter logic |
+| 3 | Female-Only Ride Mode | ✅ | Driver creation & passenger join/search gender filtering + verified gating |
 | 4 | In-App SOS Button | ✅ | `sos_alerts` table; mock notification; admin resolve |
 | 5 | Ride Cost Splitter | ✅ | `GET /api/rides/{id}/split` — fare × surge, even split |
-| 6 | Campus Zone Smart Matching | ❌ | `ZONES` lookup exists in rides.py; no matching UI/algorithm |
+| 6 | Campus Zone Smart Matching | ✅ | `/api/rides/match` multi-factor scoring (route, timetable, intermediate stops, female-only) |
 | 7 | Driver Rating & Review | ❌ | No `reviews` table |
-| 8 | Scheduled Ride Booking | ❌ | `rides.scheduled_at` field exists; no booking UI |
+| 8 | Scheduled Ride Booking | ✅ | `rides.scheduled_at` field + advance booking validation & UI selector |
 | 9 | Wallet & bKash Integration | ❌ | Mocked only (console); no wallet/transactions table |
 | 10 | Ride History & Receipt Log | ❌ | Ride list exists; no history page/PDF receipts |
 | 11 | Driver Vehicle Verification | ✅ | Doc upload + admin approve/reject + role flip |
 | 12 | Trusted Contact Sharing | ✅ | DB-backed CRUD; auto-share on tracking start (mock delivery) |
 | 13 | Peak Hour Surge Indicator | ✅ | Seeded 24h + live ride-volume bump; Asia/Dhaka timezone |
-| 14 | Campus Pickup Hotspots | 🔶 | Static pins + hotspot dropdown; no geo matching |
+| 14 | Campus Pickup Hotspots | ✅ | Categorized hotspots (Gates, Academic, Transit) + `/api/rides/hotspots` API + Interactive TrackingMap & selector UI |
 | 15 | Ride Chat (In-App Messaging) | ✅ | WS `/ws/chat/{ride_id}` + REST history + UI |
 | 16 | Driver Earnings Dashboard | ❌ | Aggregatable from completed rides |
 | 17 | Admin Complaint Panel | ✅ | Full CRUD + statuses + stats + admin notes |
 | 18 | Ride Cancellation Policy & Penalty | ❌ | `cancelled` status reserved; no penalty logic |
-| 19 | Multi-Stop Ride Support | ❌ | No stops table |
+| 19 | Multi-Stop Ride Support | ✅ | `ride_stops` table + waypoint status tracking + passenger pickup/drop-off stop joining |
 | 20 | Eco/Footprint Tracker | ✅ | CO₂ saved vs solo, trees + fuel equivalents, gamified UI |
 
 ## 3. Sprint completion (SRS §7 mapping)
@@ -40,8 +40,8 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 | Sprint | Score | Detail |
 |--------|-------|--------|
 | 1 — Auth | 2/2 ✅ | Verification (#1), Driver verification (#11) |
-| 2 — Matching & Logistics | 0/4 ❌ | Hotspots partial (#14); matching (#6), scheduled (#8), multi-stop (#19) missing |
-| 3 — Tracking & Safety | 4/5 🔶 | GPS (#2), SOS (#4), Contacts (#12), Chat (#15) done; Female-Only (#3) missing |
+| 2 — Matching & Logistics | 4/4 ✅ | Hotspots (#14), Matching (#6), Scheduled (#8), Multi-Stop (#19) complete |
+| 3 — Tracking & Safety | 5/5 ✅ | GPS (#2), SOS (#4), Contacts (#12), Chat (#15), Female-Only (#3) complete |
 | 4 — Payments & Earnings | 2/5 🔶 | Splitter (#5), Surge (#13) done; wallet (#9), history (#10), earnings (#16) missing |
 | 5 — Admin & Quality | 2/4 🔶 | Complaints (#17), Eco (#20) done; reviews (#7), cancellation (#18) missing |
 

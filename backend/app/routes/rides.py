@@ -1,24 +1,18 @@
 """
-Arooohi Backend — Rides Core Routes
-(Ornab) Minimal ride lifecycle foundation needed by Ornab's features:
-  - Ride Cost Splitter
-  - Peak Hour Surge Indicator (consumes ride volume)
-  - Ride Chat (ride-scoped conversations)
-  - Eco/Footprint Tracker (distance + occupancy per completed ride)
-NOTE: This is a MINIMAL ride model for demo purposes. Full matching/booking
-(SRS Sprint 2) is a separate teammate module and can build on these tables.
-
-Improvements in this pass (cross-agent, 2026-07-31):
-- Ride Cost Splitter: seat-aware split + whole-taka largest-remainder rounding so
-  the per-person shares always sum exactly to the total fare (PROJECT_PLAN §6.2).
-- Join: seat count validated against ride capacity (`total_seats`).
-- end_ride: distance now measured over the FULL path of the rider's most recent
-  inactive tracking session (sum of consecutive legs), not the first 2 points of
-  any old session.
+Arooohi Backend — Rides Core & Campus Smart Matching Routes
+Features implemented:
+  - Feature 3: Female-Only Ride Mode (gender-gated creation, joining, and filtering)
+  - Feature 6: Campus Zone Smart Matching (route stops, zone proximity, time-flex matching)
+  - Feature 8: Scheduled Ride Booking (ISO scheduling, class-time presets, time window matching)
+  - Feature 14: Dynamic Cost Splitter (seat-aware largest-remainder split)
+  - Feature 15: Ride Chat (WebSocket & message history)
+  - Feature 19: Multi-Stop Ride Support (intermediate stops, passenger-specific pickup/dropoff, stop progress)
+  - Feature 20: Campus Pickup Hotspots (categorized campus gates, academic plazas, transit hubs)
 """
 import uuid
 import math
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime as dt, timedelta
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from app.database import get_db
 from app.auth import get_current_user_id
@@ -26,14 +20,121 @@ from app.routes.surge import compute_current_multiplier
 
 router = APIRouter()
 
-# Small BRACU-area zone lookup used to estimate distance when GPS points are unavailable.
-ZONES = {
-    "gate 1": (23.7800, 90.4100), "gate 2": (23.7765, 90.4070), "gate 3": (23.7792, 90.4120),
-    "library": (23.7781, 90.4042), "cafeteria": (23.7770, 90.4050), "cafe": (23.7770, 90.4050),
-    "ub building": (23.7788, 90.4060), "ub": (23.7788, 90.4060), "residential": (23.7820, 90.4080),
-    "residence": (23.7820, 90.4080), "mohakhali": (23.7700, 90.4020), "banani": (23.7760, 90.4100),
-    "gulshan": (23.7900, 90.4100), "dhanmondi": (23.7450, 90.3800), "mirpur": (23.8100, 90.3500),
-}
+HOTSPOTS = [
+    {
+        "id": "gate 1",
+        "name": "Gate 1 (Main Entrance)",
+        "category": "campus_gate",
+        "lat": 23.7800,
+        "lng": 90.4100,
+        "description": "BRACU Main Gate 1 & Security Checkpoint",
+        "popular": True,
+    },
+    {
+        "id": "gate 2",
+        "name": "Gate 2 (West Wing)",
+        "category": "campus_gate",
+        "lat": 23.7765,
+        "lng": 90.4070,
+        "description": "West Gate pickup area near cafeteria",
+        "popular": False,
+    },
+    {
+        "id": "gate 3",
+        "name": "Gate 3 (East Wing)",
+        "category": "campus_gate",
+        "lat": 23.7792,
+        "lng": 90.4120,
+        "description": "East Gate & Bike Parking zone",
+        "popular": False,
+    },
+    {
+        "id": "library",
+        "name": "Ayesha Abed Library",
+        "category": "academic",
+        "lat": 23.7781,
+        "lng": 90.4042,
+        "description": "Central Library & Study Plaza",
+        "popular": True,
+    },
+    {
+        "id": "cafeteria",
+        "name": "Main Cafeteria & Lounge",
+        "category": "academic",
+        "lat": 23.7770,
+        "lng": 90.4050,
+        "description": "Cafeteria outdoor plaza & student hangout",
+        "popular": True,
+    },
+    {
+        "id": "ub building",
+        "name": "UB Building (UB01-UB07)",
+        "category": "academic",
+        "lat": 23.7788,
+        "lng": 90.4060,
+        "description": "University Building classrooms & labs",
+        "popular": True,
+    },
+    {
+        "id": "residential",
+        "name": "Residential Campus Hub",
+        "category": "residential",
+        "lat": 23.7820,
+        "lng": 90.4080,
+        "description": "Student dormitories and housing area",
+        "popular": False,
+    },
+    {
+        "id": "mohakhali",
+        "name": "Mohakhali Wireless Gate",
+        "category": "transit_hub",
+        "lat": 23.7700,
+        "lng": 90.4020,
+        "description": "Major transit point connecting to BRACU",
+        "popular": True,
+    },
+    {
+        "id": "banani",
+        "name": "Banani Road 11 / Station",
+        "category": "transit_hub",
+        "lat": 23.7760,
+        "lng": 90.4100,
+        "description": "Banani commercial and pickup zone",
+        "popular": True,
+    },
+    {
+        "id": "gulshan",
+        "name": "Gulshan-1 Circle",
+        "category": "transit_hub",
+        "lat": 23.7900,
+        "lng": 90.4100,
+        "description": "Gulshan roundabout & bus stoppage",
+        "popular": True,
+    },
+    {
+        "id": "dhanmondi",
+        "name": "Dhanmondi Hub (Road 27)",
+        "category": "transit_hub",
+        "lat": 23.7450,
+        "lng": 90.3800,
+        "description": "Dhanmondi student carpool hub",
+        "popular": False,
+    },
+    {
+        "id": "mirpur",
+        "name": "Mirpur 10 Circle (Metro)",
+        "category": "transit_hub",
+        "lat": 23.8100,
+        "lng": 90.3500,
+        "description": "Mirpur metro rail & student transit hub",
+        "popular": False,
+    },
+]
+
+ZONES = {h["id"]: (h["lat"], h["lng"]) for h in HOTSPOTS}
+ZONES["cafe"] = ZONES["cafeteria"]
+ZONES["ub"] = ZONES["ub building"]
+ZONES["residence"] = ZONES["residential"]
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -64,16 +165,26 @@ def _path_length_km(points) -> float:
     return sum(_haversine_km(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
 
 
+@router.get("/hotspots")
+def get_hotspots():
+    """Returns categorized campus pickup hotspots and transit points."""
+    return HOTSPOTS
+
+
 class CreateRideRequest(BaseModel):
     source: str
     destination: str
     base_fare: float
     total_seats: int = 4
     scheduled_at: str | None = None
+    female_only: bool = False
+    stops: list[str] = []
 
 
 class JoinRideRequest(BaseModel):
     seats: int = 1
+    pickup_stop: str | None = None
+    dropoff_stop: str | None = None
 
     def model_post_init(self, __context):
         if self.seats < 1:
@@ -84,17 +195,25 @@ class EndRideRequest(BaseModel):
     distance_km: float | None = None
 
 
+class UpdateStopStatusRequest(BaseModel):
+    status: str  # 'pending', 'reached', 'departed'
+
+
 @router.post("")
 def create_ride(body: CreateRideRequest, user_id: str = Depends(get_current_user_id)):
-    """Driver creates a new ride. (Demo: any verified user may create a ride.)"""
+    """Driver creates a new ride with multi-stop and scheduling support."""
     conn = get_db()
-    user = conn.execute("SELECT is_verified, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = conn.execute("SELECT is_verified, role, gender FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         conn.close()
         raise HTTPException(status_code=404, detail="User not found")
     if not user["is_verified"]:
         conn.close()
         raise HTTPException(status_code=403, detail="Verify your BRACU email before creating rides")
+
+    if body.female_only and user["gender"] != "female":
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only female drivers can create female-only rides")
 
     if body.base_fare <= 0:
         conn.close()
@@ -104,16 +223,32 @@ def create_ride(body: CreateRideRequest, user_id: str = Depends(get_current_user
         conn.close()
         raise HTTPException(status_code=400, detail="total_seats must be between 1 and 10")
 
-    # Capture the current surge multiplier so the cost splitter reflects live pricing.
+    if body.scheduled_at:
+        try:
+            # Allow ISO formats
+            parsed = dt.fromisoformat(body.scheduled_at.replace("Z", "+00:00"))
+            # If naive, compare with naive utcnow
+            if parsed.tzinfo is None and parsed < dt.utcnow():
+                conn.close()
+                raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
+        except ValueError:
+            pass
+
     surge, _, _ = compute_current_multiplier(conn)
 
     ride_id = str(uuid.uuid4())
     conn.execute(
-        """INSERT INTO rides (id, driver_id, source, destination, base_fare, surge_multiplier, total_seats, scheduled_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO rides (id, driver_id, source, destination, base_fare, surge_multiplier, total_seats, scheduled_at, female_only)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (ride_id, user_id, body.source.strip(), body.destination.strip(),
-         round(body.base_fare, 2), surge, body.total_seats, body.scheduled_at)
+         round(body.base_fare, 2), surge, body.total_seats, body.scheduled_at, int(body.female_only))
     )
+    for idx, stop in enumerate(body.stops):
+        if stop.strip():
+            conn.execute(
+                "INSERT INTO ride_stops (id, ride_id, sequence, place, status) VALUES (?, ?, ?, ?, 'pending')",
+                (str(uuid.uuid4()), ride_id, idx, stop.strip())
+            )
     conn.commit()
     conn.close()
 
@@ -122,11 +257,7 @@ def create_ride(body: CreateRideRequest, user_id: str = Depends(get_current_user
 
 @router.post("/{ride_id}/join")
 def join_ride(ride_id: str, body: JoinRideRequest, user_id: str = Depends(get_current_user_id)):
-    """Rider requests a seat on a scheduled/active ride.
-
-    Improvement note:
-    - Seat requests are now constrained to a positive seat count to keep the rider-side ride sharing flow consistent with the split-cost model.
-    """
+    """Rider requests a seat on a ride, optionally specifying their pickup and drop-off stops."""
     conn = get_db()
     ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
     if not ride:
@@ -142,7 +273,11 @@ def join_ride(ride_id: str, body: JoinRideRequest, user_id: str = Depends(get_cu
         conn.close()
         raise HTTPException(status_code=400, detail="seats must be at least 1")
 
-    # Capacity check: seats already taken (accepted/requested) + this request.
+    user = conn.execute("SELECT gender FROM users WHERE id = ?", (user_id,)).fetchone()
+    if ride["female_only"] and user["gender"] != "female":
+        conn.close()
+        raise HTTPException(status_code=403, detail="This is a female-only ride")
+
     taken = conn.execute(
         """SELECT COALESCE(SUM(seats), 0) AS s FROM ride_passengers
            WHERE ride_id = ? AND status IN ('requested', 'accepted')""",
@@ -164,14 +299,28 @@ def join_ride(ride_id: str, body: JoinRideRequest, user_id: str = Depends(get_cu
         conn.close()
         raise HTTPException(status_code=400, detail="You already have a pending/accepted seat on this ride")
 
+    stops = [r["place"].lower() for r in conn.execute("SELECT place FROM ride_stops WHERE ride_id = ?", (ride_id,)).fetchall()]
+    valid_places = {ride["source"].lower(), ride["destination"].lower(), *stops}
+
+    pickup = body.pickup_stop.strip() if body.pickup_stop else ride["source"]
+    dropoff = body.dropoff_stop.strip() if body.dropoff_stop else ride["destination"]
+
     pid = str(uuid.uuid4())
     conn.execute(
-        "INSERT INTO ride_passengers (id, ride_id, passenger_id, seats, status) VALUES (?, ?, ?, ?, 'requested')",
-        (pid, ride_id, user_id, body.seats)
+        """INSERT INTO ride_passengers (id, ride_id, passenger_id, seats, pickup_stop, dropoff_stop, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'requested')""",
+        (pid, ride_id, user_id, body.seats, pickup, dropoff)
     )
     conn.commit()
     conn.close()
-    return {"message": "Ride request sent", "passenger_id": pid, "status": "requested"}
+    return {
+        "message": "Ride request sent",
+        "passenger_id": pid,
+        "status": "requested",
+        "pickup_stop": pickup,
+        "dropoff_stop": dropoff,
+        "seats": body.seats
+    }
 
 
 @router.post("/{ride_id}/accept/{passenger_id}")
@@ -197,6 +346,32 @@ def accept_passenger(ride_id: str, passenger_id: str, user_id: str = Depends(get
     return {"message": "Passenger accepted"}
 
 
+@router.post("/{ride_id}/stops/{stop_id}/status")
+def update_stop_status(ride_id: str, stop_id: str, body: UpdateStopStatusRequest, user_id: str = Depends(get_current_user_id)):
+    """Driver updates progress of a stop (pending, reached, departed)."""
+    if body.status not in ("pending", "reached", "departed"):
+        raise HTTPException(status_code=400, detail="Status must be pending, reached, or departed")
+
+    conn = get_db()
+    ride = conn.execute("SELECT driver_id FROM rides WHERE id = ?", (ride_id,)).fetchone()
+    if not ride:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Ride not found")
+    if ride["driver_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only the driver can update stop progress")
+
+    res = conn.execute(
+        "UPDATE ride_stops SET status = ? WHERE id = ? AND ride_id = ?",
+        (body.status, stop_id, ride_id)
+    )
+    conn.commit()
+    conn.close()
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Stop not found for this ride")
+    return {"message": f"Stop status updated to {body.status}", "stop_id": stop_id, "status": body.status}
+
+
 @router.post("/{ride_id}/start")
 def start_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
     """Driver starts the ride."""
@@ -209,7 +384,6 @@ def start_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
         conn.close()
         raise HTTPException(status_code=403, detail="Only the driver can start the ride")
 
-    from datetime import datetime as dt
     now = dt.utcnow().isoformat()
     conn.execute(
         "UPDATE rides SET status = 'active', started_at = ? WHERE id = ?",
@@ -234,10 +408,6 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
 
     distance = body.distance_km
     if distance is None:
-        # Prefer distance travelled via GPS tracking points, else zone-based estimate.
-        # Fix (§6.2): use the driver's MOST RECENT inactive session and sum the FULL
-        # path length (all legs), instead of the gap between the 2 oldest points of
-        # any old session.
         session = conn.execute(
             """SELECT id FROM tracking_sessions
                WHERE user_id = ? AND is_active = 0
@@ -253,7 +423,6 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
         path = _path_length_km(points)
         distance = path if path > 0.0 else _estimate_distance_km(ride["source"], ride["destination"])
 
-    from datetime import datetime as dt
     conn.execute(
         """UPDATE rides SET status = 'completed', distance_km = ?, ended_at = ? WHERE id = ?""",
         (round(distance, 2), dt.utcnow().isoformat(), ride_id)
@@ -267,10 +436,194 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
     return {"message": "Ride completed", "distance_km": round(distance, 2)}
 
 
-@router.get("")
-def list_rides(user_id: str = Depends(get_current_user_id)):
-    """List rides: mine (as driver/passenger) + other open rides available to join."""
+@router.get("/match")
+def match_rides(
+    source: str | None = None,
+    destination: str | None = None,
+    scheduled_date: str | None = None,
+    scheduled_time: str | None = None,
+    female_only: bool = False,
+    user_id: str = Depends(get_current_user_id)
+):
+    """Smart Matching Algorithm:
+    Matches riders with open rides heading to their destination or passing through their intermediate stops.
+    Supports proximity zone matching, class schedule time-flex matching, and female-only filtering.
+    """
     conn = get_db()
+    user = conn.execute("SELECT gender FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if female_only and user["gender"] != "female":
+        conn.close()
+        raise HTTPException(status_code=403, detail="Female-only matching is available for female students only")
+
+    # Fetch available scheduled/active rides
+    rides = conn.execute(
+        """SELECT r.*, u.name AS driver_name, u.gender AS driver_gender
+           FROM rides r JOIN users u ON r.driver_id = u.id
+           WHERE r.driver_id != ?
+             AND r.status IN ('scheduled', 'active')
+             AND r.id NOT IN (SELECT ride_id FROM ride_passengers WHERE passenger_id = ?)
+             AND (r.female_only = 0 OR ? = 'female')
+           ORDER BY r.created_at DESC""",
+        (user_id, user_id, user["gender"])
+    ).fetchall()
+
+    stops = conn.execute("SELECT id, ride_id, sequence, place, status FROM ride_stops ORDER BY sequence ASC").fetchall()
+    ride_stops_map = {}
+    for s in stops:
+        ride_stops_map.setdefault(s["ride_id"], []).append({
+            "id": s["id"], "sequence": s["sequence"], "place": s["place"], "status": s["status"]
+        })
+
+    passengers = conn.execute(
+        """SELECT ride_id, SUM(seats) as taken FROM ride_passengers
+           WHERE status IN ('requested', 'accepted') GROUP BY ride_id"""
+    ).fetchall()
+    taken_map = {p["ride_id"]: p["taken"] for p in passengers}
+
+    conn.close()
+
+    norm_src = source.strip().lower() if source else ""
+    norm_dst = destination.strip().lower() if destination else ""
+
+    matched_results = []
+
+    for r in rides:
+        ride_id = r["id"]
+        total_seats = r["total_seats"] or 4
+        taken_seats = taken_map.get(ride_id, 0)
+        available_seats = max(0, total_seats - taken_seats)
+        if available_seats <= 0:
+            continue
+
+        if female_only and not r["female_only"]:
+            continue
+
+        ride_src = r["source"].strip().lower()
+        ride_dst = r["destination"].strip().lower()
+        r_stops = ride_stops_map.get(ride_id, [])
+        stop_names = [s["place"].strip().lower() for s in r_stops]
+
+        score = 0
+        reasons = []
+
+        # Source / Pickup scoring
+        if not norm_src:
+            score += 40
+        elif norm_src == ride_src or norm_src in ride_src or ride_src in norm_src:
+            score += 50
+            reasons.append("Exact Pickup Point")
+        else:
+            # Proximity check
+            s_coord = ZONES.get(norm_src)
+            rs_coord = ZONES.get(ride_src)
+            if s_coord and rs_coord:
+                dist = _haversine_km(s_coord, rs_coord)
+                if dist <= 1.5:
+                    score += 35
+                    reasons.append(f"Nearby Pickup Zone ({round(dist, 1)}km)")
+                else:
+                    score += 0
+            else:
+                score += 10
+
+        # Destination / Drop-off scoring (checks main destination + intermediate stops)
+        if not norm_dst:
+            score += 40
+        elif norm_dst == ride_dst or norm_dst in ride_dst or ride_dst in norm_dst:
+            score += 50
+            reasons.append("Direct Destination Match")
+        elif norm_dst in stop_names:
+            score += 45
+            matched_stop = next((s["place"] for s in r_stops if s["place"].strip().lower() == norm_dst), norm_dst)
+            reasons.append(f"Multi-Stop Route Match: {matched_stop}")
+        else:
+            # Proximity check across destination + all stops
+            d_coord = ZONES.get(norm_dst)
+            best_dist = 999.0
+            best_place = ""
+            if d_coord:
+                for place_name in [ride_dst, *stop_names]:
+                    p_coord = ZONES.get(place_name)
+                    if p_coord:
+                        d = _haversine_km(d_coord, p_coord)
+                        if d < best_dist:
+                            best_dist = d
+                            best_place = place_name
+                if best_dist <= 1.5:
+                    score += 35
+                    reasons.append(f"Near Drop-off ({round(best_dist, 1)}km of {best_place.title()})")
+                else:
+                    score += 0
+            else:
+                score += 10
+
+        # Time & Class Schedule scoring
+        if scheduled_time or scheduled_date:
+            if r["scheduled_at"]:
+                try:
+                    r_dt = dt.fromisoformat(r["scheduled_at"].replace("Z", "+00:00"))
+                    if scheduled_time:
+                        # Extract hour:minute
+                        req_parts = scheduled_time.split(":")
+                        if len(req_parts) == 2:
+                            req_h, req_m = int(req_parts[0]), int(req_parts[1])
+                            diff_mins = abs((r_dt.hour * 60 + r_dt.minute) - (req_h * 60 + req_m))
+                            if diff_mins <= 30:
+                                score += 15
+                                reasons.append(f"Class Time Match ({scheduled_time})")
+                            elif diff_mins <= 60:
+                                score += 8
+                                reasons.append(f"Near Class Time (±{diff_mins}m)")
+                            else:
+                                score -= 10
+                except Exception:
+                    pass
+
+        if bool(r["female_only"]):
+            reasons.append("🌸 Female-Only Carpool")
+
+        # Require a valid match score if user provided explicit filters
+        if norm_src and norm_dst and score < 50:
+            continue
+
+        matched_results.append({
+            "id": r["id"],
+            "driver_id": r["driver_id"],
+            "driver_name": r["driver_name"],
+            "source": r["source"],
+            "destination": r["destination"],
+            "status": r["status"],
+            "distance_km": r["distance_km"],
+            "base_fare": r["base_fare"],
+            "surge_multiplier": r["surge_multiplier"],
+            "total_seats": total_seats,
+            "available_seats": available_seats,
+            "scheduled_at": r["scheduled_at"],
+            "female_only": bool(r["female_only"]),
+            "stops": r_stops,
+            "match_score": min(100, score),
+            "match_reasons": reasons if reasons else ["General Campus Route"],
+        })
+
+    matched_results.sort(key=lambda x: (x["match_score"], x["scheduled_at"] or ""), reverse=True)
+    return matched_results
+
+
+@router.get("")
+def list_rides(
+    female_only: bool = False,
+    user_id: str = Depends(get_current_user_id)
+):
+    """List rides: mine (as driver/passenger) + open available rides."""
+    conn = get_db()
+    user = conn.execute("SELECT gender FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
 
     mine = conn.execute(
         """SELECT r.*, u.name AS driver_name, u.id AS driver_id
@@ -281,18 +634,38 @@ def list_rides(user_id: str = Depends(get_current_user_id)):
         (user_id, user_id)
     ).fetchall()
 
-    available = conn.execute(
-        """SELECT r.*, u.name AS driver_name, u.id AS driver_id
+    avail_query = """SELECT r.*, u.name AS driver_name, u.id AS driver_id
            FROM rides r JOIN users u ON r.driver_id = u.id
            WHERE r.driver_id != ?
              AND r.status IN ('scheduled', 'active')
              AND r.id NOT IN (SELECT ride_id FROM ride_passengers WHERE passenger_id = ?)
-           ORDER BY r.created_at DESC""",
-        (user_id, user_id)
+             AND (r.female_only = 0 OR ? = 'female')"""
+    params = [user_id, user_id, user["gender"]]
+
+    if female_only:
+        avail_query += " AND r.female_only = 1"
+
+    avail_query += " ORDER BY r.created_at DESC"
+    available = conn.execute(avail_query, params).fetchall()
+
+    stops = conn.execute("SELECT id, ride_id, sequence, place, status FROM ride_stops ORDER BY sequence ASC").fetchall()
+    ride_stops_map = {}
+    for s in stops:
+        ride_stops_map.setdefault(s["ride_id"], []).append({
+            "id": s["id"], "sequence": s["sequence"], "place": s["place"], "status": s["status"]
+        })
+
+    passengers = conn.execute(
+        """SELECT ride_id, SUM(seats) as taken FROM ride_passengers
+           WHERE status IN ('requested', 'accepted') GROUP BY ride_id"""
     ).fetchall()
+    taken_map = {p["ride_id"]: p["taken"] for p in passengers}
+
     conn.close()
 
     def _ser(ride):
+        total_seats = ride["total_seats"] or 4
+        taken = taken_map.get(ride["id"], 0)
         return {
             "id": ride["id"],
             "driver_id": ride["driver_id"],
@@ -303,11 +676,14 @@ def list_rides(user_id: str = Depends(get_current_user_id)):
             "distance_km": ride["distance_km"],
             "base_fare": ride["base_fare"],
             "surge_multiplier": ride["surge_multiplier"],
-            "total_seats": ride["total_seats"],
+            "total_seats": total_seats,
+            "available_seats": max(0, total_seats - taken),
             "scheduled_at": ride["scheduled_at"],
             "started_at": ride["started_at"],
             "ended_at": ride["ended_at"],
             "created_at": ride["created_at"],
+            "female_only": bool(ride["female_only"]),
+            "stops": ride_stops_map.get(ride["id"], []),
         }
 
     return {
@@ -318,10 +694,10 @@ def list_rides(user_id: str = Depends(get_current_user_id)):
 
 @router.get("/{ride_id}")
 def get_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    """Ride detail including passengers (participants only)."""
+    """Ride detail including passenger stops and multi-stop progress."""
     conn = get_db()
     ride = conn.execute(
-        """SELECT r.*, u.name AS driver_name FROM rides r
+        """SELECT r.*, u.name AS driver_name, u.gender AS driver_gender FROM rides r
            JOIN users u ON r.driver_id = u.id WHERE r.id = ?""",
         (ride_id,)
     ).fetchone()
@@ -339,34 +715,53 @@ def get_ride(ride_id: str, user_id: str = Depends(get_current_user_id)):
             raise HTTPException(status_code=403, detail="Only ride participants can view this ride")
 
     passengers = conn.execute(
-        """SELECT rp.id, rp.passenger_id, rp.seats, rp.status, u.name AS passenger_name
+        """SELECT rp.id, rp.passenger_id, rp.seats, rp.status, rp.pickup_stop, rp.dropoff_stop, u.name AS passenger_name, u.gender AS passenger_gender
            FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
            WHERE rp.ride_id = ?""",
         (ride_id,)
     ).fetchall()
+
+    stops = conn.execute(
+        "SELECT id, sequence, place, status FROM ride_stops WHERE ride_id = ? ORDER BY sequence ASC",
+        (ride_id,)
+    ).fetchall()
+
     conn.close()
+
+    total_seats = ride["total_seats"] or 4
+    taken = sum(p["seats"] for p in passengers if p["status"] in ("requested", "accepted"))
 
     return {
         "id": ride["id"],
         "driver_id": ride["driver_id"],
         "driver_name": ride["driver_name"],
+        "driver_gender": ride["driver_gender"],
         "source": ride["source"],
         "destination": ride["destination"],
         "status": ride["status"],
         "distance_km": ride["distance_km"],
         "base_fare": ride["base_fare"],
         "surge_multiplier": ride["surge_multiplier"],
-        "total_seats": ride["total_seats"],
+        "total_seats": total_seats,
+        "available_seats": max(0, total_seats - taken),
         "scheduled_at": ride["scheduled_at"],
         "started_at": ride["started_at"],
         "ended_at": ride["ended_at"],
         "created_at": ride["created_at"],
+        "female_only": bool(ride["female_only"]),
+        "stops": [
+            {"id": s["id"], "sequence": s["sequence"], "place": s["place"], "status": s["status"]}
+            for s in stops
+        ],
         "passengers": [
             {
                 "id": p["id"],
                 "passenger_id": p["passenger_id"],
                 "passenger_name": p["passenger_name"],
+                "passenger_gender": p["passenger_gender"],
                 "seats": p["seats"],
+                "pickup_stop": p["pickup_stop"] or ride["source"],
+                "dropoff_stop": p["dropoff_stop"] or ride["destination"],
                 "status": p["status"],
             }
             for p in passengers
@@ -379,13 +774,7 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
     """Ride Cost Splitter — total = base_fare x surge; split by SEATS among accepted
     passengers, with whole-taka largest-remainder rounding so shares sum exactly
     to `total`.
-
-    Improvement note:
-    - Access is now restricted to the driver or an accepted ride participant.
-    - A passenger booking N seats pays N shares (seat-aware split).
-    - Largest-remainder pass fixes the rounding drift from the old
-      `round(total / n, 2)` per person (PROJECT_PLAN.md §6.2).
-    (SRS Feature 5)"""
+    """
     conn = get_db()
     ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
     if not ride:
@@ -402,7 +791,7 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
         raise HTTPException(status_code=403, detail="Only ride participants can view fare split details")
 
     accepted = conn.execute(
-        """SELECT rp.id, rp.passenger_id, rp.seats, u.name
+        """SELECT rp.id, rp.passenger_id, rp.seats, rp.pickup_stop, rp.dropoff_stop, u.name
            FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
            WHERE rp.ride_id = ? AND rp.status IN ('accepted', 'completed')""",
         (ride_id,)
@@ -420,7 +809,13 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
         weight = max(int(r["seats"]), 1)
         share = round(sum(seat_shares[share_idx:share_idx + weight]), 2)
         share_idx += weight
-        breakdown.append({"passenger": r["name"], "seats": weight, "share": share})
+        breakdown.append({
+            "passenger": r["name"],
+            "seats": weight,
+            "share": share,
+            "pickup_stop": r["pickup_stop"] or ride["source"],
+            "dropoff_stop": r["dropoff_stop"] or ride["destination"]
+        })
 
     return {
         "ride_id": ride_id,
@@ -438,8 +833,7 @@ def ride_cost_split(ride_id: str, user_id: str = Depends(get_current_user_id)):
 
 def _split_total(total: float, parts: int) -> list[float]:
     """Largest-remainder split at paisa (0.01 taka) resolution so the parts sum
-    EXACTLY to `total`. Fixes the rounding drift of naive `round(total / n, 2)`.
-    Example: 130 / 3 -> [43.34, 43.33, 43.33] (sums to 130.00)."""
+    EXACTLY to `total`. Fixes the rounding drift of naive `round(total / n, 2)`."""
     if parts <= 0:
         return []
     total_paisa = round(total * 100)
@@ -487,3 +881,4 @@ def get_ride_messages(ride_id: str, user_id: str = Depends(get_current_user_id))
         }
         for m in messages
     ]
+

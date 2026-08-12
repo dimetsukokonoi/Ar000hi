@@ -348,7 +348,6 @@ def action_start(no_browser, engine, fullscreen, kiosk):
     if not url_up(SITE_URL):
         say("Starting frontend (Next.js) on :3000 ...")
         state["frontend"] = start_frontend()
-        state["frontend"] = start_frontend()
         wait_for(SITE_URL, "Frontend", "frontend.log")
     else:
         warn("Frontend already responding on :3000 — leaving it alone.")

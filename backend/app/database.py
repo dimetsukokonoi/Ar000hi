@@ -4,7 +4,7 @@ Arooohi Backend — Database Layer (Python built-in sqlite3)
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "arooohi.db")
+DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "arooohi.db"))
 
 
 def get_db() -> sqlite3.Connection:
@@ -146,9 +146,20 @@ def init_db():
             ride_id TEXT NOT NULL REFERENCES rides(id),
             passenger_id TEXT NOT NULL REFERENCES users(id),
             seats INTEGER NOT NULL DEFAULT 1,
+            pickup_stop TEXT DEFAULT '',
+            dropoff_stop TEXT DEFAULT '',
             status TEXT NOT NULL DEFAULT 'requested'
                 CHECK(status IN ('requested', 'accepted', 'completed', 'cancelled')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS ride_stops (
+            id TEXT PRIMARY KEY,
+            ride_id TEXT NOT NULL REFERENCES rides(id),
+            sequence INTEGER NOT NULL,
+            place TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'reached', 'departed'))
         );
 
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -182,6 +193,13 @@ def init_db():
     # ---- Lightweight migrations for existing DB files (idempotent) ----
     # rides.total_seats powers seat-aware cost splitting + join capacity checks.
     _ensure_column(conn, "rides", "total_seats", "INTEGER NOT NULL DEFAULT 4")
+    # Female-only ride mode toggle
+    _ensure_column(conn, "rides", "female_only", "INTEGER NOT NULL DEFAULT 0")
+    # Multi-stop ride support: passenger specific pickup and dropoff stops
+    _ensure_column(conn, "ride_passengers", "pickup_stop", "TEXT DEFAULT ''")
+    _ensure_column(conn, "ride_passengers", "dropoff_stop", "TEXT DEFAULT ''")
+    # Multi-stop live progress tracking
+    _ensure_column(conn, "ride_stops", "status", "TEXT NOT NULL DEFAULT 'pending'")
 
     # SQLite hardening: WAL journal + indexes on the hot foreign keys.
     # (matches PROJECT_PLAN.md §6.3)
@@ -189,6 +207,7 @@ def init_db():
     for idx_sql in (
         "CREATE INDEX IF NOT EXISTS idx_ride_passengers_ride ON ride_passengers(ride_id)",
         "CREATE INDEX IF NOT EXISTS idx_ride_passengers_user ON ride_passengers(passenger_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ride_stops_ride ON ride_stops(ride_id)",
         "CREATE INDEX IF NOT EXISTS idx_chat_messages_ride ON chat_messages(ride_id)",
         "CREATE INDEX IF NOT EXISTS idx_tracking_points_session ON tracking_points(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_trusted_contacts_user ON trusted_contacts(user_id)",
