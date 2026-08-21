@@ -47,6 +47,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: "/dashboard/rides", label: "🚗  Rides & Surge", section: "ride" },
     { href: "/dashboard/driver", label: "🚗  Driver Verification", section: "ride" },
     { href: "/dashboard/eco", label: "🌱  Eco Tracker", section: "ride" },
+    { href: "/dashboard/history", label: "🧾  History & Receipts", section: "ride" },
+    { href: "/dashboard/wallet", label: "👛  Wallet", section: "ride" },
+    { href: "/dashboard/earnings", label: "📊  Driver Earnings", section: "ride" },
     { href: "/dashboard/complaints", label: "📋  Complaints", section: "safety" },
     { href: "/dashboard/contacts", label: "👥  Trusted Contacts", section: "safety" },
   ];

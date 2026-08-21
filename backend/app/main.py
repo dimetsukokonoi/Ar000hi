@@ -20,6 +20,12 @@ from app.routes.surge import router as surge_router
 from app.routes.chat import router as chat_router
 from app.routes.eco import router as eco_router
 
+# Sprint 4/5 completion: Wallet (#9), History & Receipts (#10), Earnings (#16), Reviews (#7)
+from app.routes.wallet import router as wallet_router
+from app.routes.history import router as history_router
+from app.routes.earnings import router as earnings_router
+from app.routes.reviews import router as reviews_router
+
 # Initialize database on startup
 init_db()
 
@@ -56,6 +62,12 @@ app.include_router(rides_router, prefix="/api/rides", tags=["Rides"])
 app.include_router(surge_router, prefix="/api/surge", tags=["Peak Hour Surge"])
 app.include_router(chat_router, prefix="/ws", tags=["Ride Chat"])
 app.include_router(eco_router, prefix="/api/eco", tags=["Eco Tracker"])
+
+# Payments, history and reputation
+app.include_router(wallet_router, prefix="/api/wallet", tags=["Wallet & bKash"])
+app.include_router(history_router, prefix="/api/history", tags=["Ride History & Receipts"])
+app.include_router(earnings_router, prefix="/api/earnings", tags=["Driver Earnings"])
+app.include_router(reviews_router, prefix="/api/reviews", tags=["Ratings & Reviews"])
 
 
 @app.get("/api/health")

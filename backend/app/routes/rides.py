@@ -6,6 +6,7 @@ Features implemented:
   - Feature 8: Scheduled Ride Booking (ISO scheduling, class-time presets, time window matching)
   - Feature 14: Dynamic Cost Splitter (seat-aware largest-remainder split)
   - Feature 15: Ride Chat (WebSocket & message history)
+  - Feature 18: Ride Cancellation Policy & Penalty (free before dispatch, fee after)
   - Feature 19: Multi-Stop Ride Support (intermediate stops, passenger-specific pickup/dropoff, stop progress)
   - Feature 20: Campus Pickup Hotspots (categorized campus gates, academic plazas, transit hubs)
 """
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.auth import get_current_user_id
 from app.routes.surge import compute_current_multiplier
+from app.routes.wallet import charge
 
 router = APIRouter()
 
@@ -193,6 +195,10 @@ class JoinRideRequest(BaseModel):
 
 class EndRideRequest(BaseModel):
     distance_km: float | None = None
+
+
+class CancelRideRequest(BaseModel):
+    reason: str = ""
 
 
 class UpdateStopStatusRequest(BaseModel):
@@ -405,6 +411,13 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
     if ride["driver_id"] != user_id:
         conn.close()
         raise HTTPException(status_code=403, detail="Only the driver can end the ride")
+    # Ending twice would charge every passenger their fare twice, so this guard is
+    # load-bearing now that completion settles money — not just tidiness.
+    if ride["status"] in ("completed", "cancelled"):
+        conn.close()
+        raise HTTPException(
+            status_code=400, detail=f"This ride is already {ride['status']}"
+        )
 
     distance = body.distance_km
     if distance is None:
@@ -423,6 +436,35 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
         path = _path_length_km(points)
         distance = path if path > 0.0 else _estimate_distance_km(ride["source"], ride["destination"])
 
+    # Settle fares BEFORE flipping statuses, so the shares charged are computed from
+    # exactly the same passenger set the cost splitter (Feature 5) shows.
+    riders = conn.execute(
+        """SELECT rp.passenger_id, rp.seats, u.name
+           FROM ride_passengers rp JOIN users u ON rp.passenger_id = u.id
+           WHERE rp.ride_id = ? AND rp.status = 'accepted'""",
+        (ride_id,)
+    ).fetchall()
+
+    charged = []
+    for r in riders:
+        share = _passenger_fare_share(conn, ride, r["passenger_id"])
+        if share <= 0:
+            continue
+        # Overdraft is allowed on purpose: the driver must be able to finish the trip
+        # regardless of a passenger's balance. A negative balance is an outstanding
+        # amount the rider clears on their next top-up.
+        tx = charge(
+            conn, r["passenger_id"], share, "fare", ride_id=ride_id,
+            note=f"Ride fare — {ride['source']} to {ride['destination']}",
+        )
+        charged.append({
+            "passenger_id": r["passenger_id"],
+            "name": r["name"],
+            "amount": share,
+            "balance_after": tx["balance_after"],
+            "settled": tx["balance_after"] >= 0,
+        })
+
     conn.execute(
         """UPDATE rides SET status = 'completed', distance_km = ?, ended_at = ? WHERE id = ?""",
         (round(distance, 2), dt.utcnow().isoformat(), ride_id)
@@ -433,7 +475,207 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
     )
     conn.commit()
     conn.close()
-    return {"message": "Ride completed", "distance_km": round(distance, 2)}
+
+    collected = round(sum(c["amount"] for c in charged), 2)
+    owing = [c for c in charged if not c["settled"]]
+    message = f"Ride completed — BDT {collected:.2f} collected from {len(charged)} passenger(s)"
+    if owing:
+        names = ", ".join(c["name"] for c in owing)
+        verb = "owes" if len(owing) == 1 else "owe"
+        message += f". {names} had insufficient balance and now {verb} the difference."
+
+    return {
+        "message": message,
+        "distance_km": round(distance, 2),
+        "fares_collected": collected,
+        "charged": charged,
+        "unsettled": len(owing),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Feature 18: Ride Cancellation Policy & Penalty
+#
+# "Dispatch" is the moment the driver presses Start, i.e. rides.started_at is set
+# and status flips to 'active'. Cancelling before dispatch is free; after dispatch
+# the cancelling party is charged, because the other side has already committed
+# time (the driver is en route / seats were held out of the pool).
+#
+# The penalty is a percentage of what the cancelling party's ride was worth to
+# them, clamped so it is neither trivial on a cheap hop nor punitive on a long
+# surge-priced trip. It is charged to the wallet (Feature 9) and shows up in the
+# receipt log (Feature 10).
+# ---------------------------------------------------------------------------
+
+PENALTY_RATE = 0.20      # 20% of the cancelling party's fare exposure
+MIN_PENALTY = 20.0       # BDT floor, so a late cancel is never a rounding error
+MAX_PENALTY = 150.0      # BDT ceiling
+
+
+def _passenger_fare_share(conn, ride, passenger_id: str) -> float:
+    """This passenger's seat-weighted slice of the ride total (Feature 5 math)."""
+    accepted = conn.execute(
+        """SELECT passenger_id, seats FROM ride_passengers
+           WHERE ride_id = ? AND status IN ('accepted', 'completed')
+           ORDER BY created_at ASC""",
+        (ride["id"],)
+    ).fetchall()
+    weights = [max(int(r["seats"]), 1) for r in accepted]
+    total_seats = sum(weights)
+    if total_seats == 0:
+        return 0.0
+
+    shares = _split_total(round(ride["base_fare"] * ride["surge_multiplier"], 2), total_seats)
+    idx = 0
+    for r, w in zip(accepted, weights):
+        if r["passenger_id"] == passenger_id:
+            return round(sum(shares[idx:idx + w]), 2)
+        idx += w
+    return 0.0
+
+
+def _cancellation_quote(conn, ride, user_id: str) -> dict:
+    """What cancelling this ride would cost `user_id` right now — no side effects.
+
+    Shared by the preview endpoint and the cancel endpoint so the warning the user
+    is shown and the amount they are actually charged can never drift apart.
+    """
+    is_driver = ride["driver_id"] == user_id
+    dispatched = ride["status"] == "active"
+
+    if is_driver:
+        exposure = round(ride["base_fare"] * ride["surge_multiplier"], 2)
+    else:
+        exposure = _passenger_fare_share(conn, ride, user_id)
+
+    if not dispatched:
+        return {
+            "will_be_charged": False,
+            "penalty": 0.0,
+            "exposure": exposure,
+            "dispatched": False,
+            "role": "driver" if is_driver else "passenger",
+            "reason": "Free cancellation — the ride has not been dispatched yet.",
+        }
+
+    penalty = round(min(max(exposure * PENALTY_RATE, MIN_PENALTY), MAX_PENALTY), 2)
+    who = "your passengers are already on board" if is_driver else "your driver is already en route"
+    return {
+        "will_be_charged": True,
+        "penalty": penalty,
+        "exposure": exposure,
+        "dispatched": True,
+        "role": "driver" if is_driver else "passenger",
+        "reason": (
+            f"This ride has already been dispatched and {who}. "
+            f"A BDT {penalty:.2f} late-cancellation fee ({int(PENALTY_RATE * 100)}% of "
+            f"BDT {exposure:.2f}) will be charged to your wallet."
+        ),
+    }
+
+
+def _load_cancellable(conn, ride_id: str, user_id: str):
+    """Fetch the ride and confirm `user_id` may cancel it. Raises on any problem."""
+    ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
+    if not ride:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Ride not found")
+
+    if ride["status"] in ("completed", "cancelled"):
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"This ride is already {ride['status']} and cannot be cancelled",
+        )
+
+    is_driver = ride["driver_id"] == user_id
+    seat = conn.execute(
+        """SELECT * FROM ride_passengers
+           WHERE ride_id = ? AND passenger_id = ? AND status IN ('requested', 'accepted')""",
+        (ride_id, user_id)
+    ).fetchone()
+    if not is_driver and not seat:
+        conn.close()
+        raise HTTPException(status_code=403, detail="You are not part of this ride")
+
+    return ride, is_driver, seat
+
+
+@router.get("/{ride_id}/cancellation-policy")
+def cancellation_policy(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    """Preview the cancellation cost so the UI can warn before anything happens."""
+    conn = get_db()
+    ride, _is_driver, _seat = _load_cancellable(conn, ride_id, user_id)
+    quote = _cancellation_quote(conn, ride, user_id)
+    conn.close()
+    return {
+        "ride_id": ride_id,
+        "ride_status": ride["status"],
+        "policy": {
+            "free_before_dispatch": True,
+            "penalty_rate": PENALTY_RATE,
+            "min_penalty": MIN_PENALTY,
+            "max_penalty": MAX_PENALTY,
+        },
+        **quote,
+    }
+
+
+@router.post("/{ride_id}/cancel")
+def cancel_ride(ride_id: str, body: CancelRideRequest, user_id: str = Depends(get_current_user_id)):
+    """Cancel a ride (driver: the whole ride) or a seat (passenger: just theirs).
+
+    Charges the late-cancellation penalty when the ride has already been dispatched.
+    """
+    conn = get_db()
+    ride, is_driver, seat = _load_cancellable(conn, ride_id, user_id)
+    quote = _cancellation_quote(conn, ride, user_id)
+    now = dt.utcnow().isoformat()
+    reason = (body.reason or "").strip()[:300]
+
+    penalty_tx = None
+    if quote["will_be_charged"]:
+        penalty_tx = charge(
+            conn, user_id, quote["penalty"], "penalty", ride_id=ride_id,
+            note=f"Late cancellation — {ride['source']} to {ride['destination']}",
+        )
+
+    if is_driver:
+        conn.execute(
+            """UPDATE rides SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?,
+                   cancel_reason = ? WHERE id = ?""",
+            (now, user_id, reason, ride_id)
+        )
+        conn.execute(
+            """UPDATE ride_passengers SET status = 'cancelled', cancelled_at = ?
+               WHERE ride_id = ? AND status IN ('requested', 'accepted')""",
+            (now, ride_id)
+        )
+        affected = "ride"
+    else:
+        conn.execute(
+            """UPDATE ride_passengers SET status = 'cancelled', cancelled_at = ?,
+                   penalty_amount = ? WHERE id = ?""",
+            (now, quote["penalty"], seat["id"])
+        )
+        affected = "seat"
+
+    conn.commit()
+    conn.close()
+
+    charged = quote["penalty"] if quote["will_be_charged"] else 0.0
+    if charged:
+        message = f"Cancelled. A BDT {charged:.2f} late-cancellation fee was charged to your wallet."
+    else:
+        message = "Cancelled free of charge — the ride had not been dispatched yet."
+
+    return {
+        "message": message,
+        "cancelled": affected,
+        "penalty_charged": charged,
+        "wallet_balance": penalty_tx["balance_after"] if penalty_tx else None,
+        "was_dispatched": quote["dispatched"],
+    }
 
 
 @router.get("/match")
@@ -483,6 +725,7 @@ def match_rides(
            WHERE status IN ('requested', 'accepted') GROUP BY ride_id"""
     ).fetchall()
     taken_map = {p["ride_id"]: p["taken"] for p in passengers}
+
 
     conn.close()
 
@@ -661,6 +904,14 @@ def list_rides(
     ).fetchall()
     taken_map = {p["ride_id"]: p["taken"] for p in passengers}
 
+    # Seat requests still awaiting the driver's approval. The driver needs this on the
+    # ride list itself — otherwise a booking is invisible until they open the ride.
+    pending = conn.execute(
+        """SELECT ride_id, COUNT(*) AS n FROM ride_passengers
+           WHERE status = 'requested' GROUP BY ride_id"""
+    ).fetchall()
+    pending_map = {p["ride_id"]: p["n"] for p in pending}
+
     conn.close()
 
     def _ser(ride):
@@ -684,6 +935,7 @@ def list_rides(
             "created_at": ride["created_at"],
             "female_only": bool(ride["female_only"]),
             "stops": ride_stops_map.get(ride["id"], []),
+            "pending_requests": pending_map.get(ride["id"], 0),
         }
 
     return {

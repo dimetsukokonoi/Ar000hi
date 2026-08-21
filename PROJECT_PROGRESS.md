@@ -20,18 +20,18 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 | 4 | In-App SOS Button | ✅ | `sos_alerts` table; mock notification; admin resolve |
 | 5 | Ride Cost Splitter | ✅ | `GET /api/rides/{id}/split` — fare × surge, even split |
 | 6 | Campus Zone Smart Matching | ✅ | `/api/rides/match` multi-factor scoring (route, timetable, intermediate stops, female-only) |
-| 7 | Driver Rating & Review | ❌ | No `reviews` table |
+| 7 | Driver Rating & Review | ✅ | `reviews` table, UNIQUE(ride,reviewer,reviewee); post-ride prompt + profile average |
 | 8 | Scheduled Ride Booking | ✅ | `rides.scheduled_at` field + advance booking validation & UI selector |
-| 9 | Wallet & bKash Integration | ❌ | Mocked only (console); no wallet/transactions table |
-| 10 | Ride History & Receipt Log | ❌ | Ride list exists; no history page/PDF receipts |
+| 9 | Wallet & bKash Integration | ✅ | `wallets` + append-only `wallet_transactions` ledger; mock bKash top-up |
+| 10 | Ride History & Receipt Log | ✅ | `/api/history` + `/api/history/{id}/receipt`; printable receipt modal |
 | 11 | Driver Vehicle Verification | ✅ | Doc upload + admin approve/reject + role flip |
 | 12 | Trusted Contact Sharing | ✅ | DB-backed CRUD; auto-share on tracking start (mock delivery) |
 | 13 | Peak Hour Surge Indicator | ✅ | Seeded 24h + live ride-volume bump; Asia/Dhaka timezone |
 | 14 | Campus Pickup Hotspots | ✅ | Categorized hotspots (Gates, Academic, Transit) + `/api/rides/hotspots` API + Interactive TrackingMap & selector UI |
 | 15 | Ride Chat (In-App Messaging) | ✅ | WS `/ws/chat/{ride_id}` + REST history + UI |
-| 16 | Driver Earnings Dashboard | ❌ | Aggregatable from completed rides |
+| 16 | Driver Earnings Dashboard | ✅ | `/api/earnings/summary` weekly buckets + `/payout` sweep into wallet |
 | 17 | Admin Complaint Panel | ✅ | Full CRUD + statuses + stats + admin notes |
-| 18 | Ride Cancellation Policy & Penalty | ❌ | `cancelled` status reserved; no penalty logic |
+| 18 | Ride Cancellation Policy & Penalty | ✅ | Free before dispatch; 20% fee after (floor 20, ceiling 150 BDT) charged to wallet |
 | 19 | Multi-Stop Ride Support | ✅ | `ride_stops` table + waypoint status tracking + passenger pickup/drop-off stop joining |
 | 20 | Eco/Footprint Tracker | ✅ | CO₂ saved vs solo, trees + fuel equivalents, gamified UI |
 
@@ -42,8 +42,8 @@ rides core and are scheduled per `PROJECT_PLAN.md` §4.
 | 1 — Auth | 2/2 ✅ | Verification (#1), Driver verification (#11) |
 | 2 — Matching & Logistics | 4/4 ✅ | Hotspots (#14), Matching (#6), Scheduled (#8), Multi-Stop (#19) complete |
 | 3 — Tracking & Safety | 5/5 ✅ | GPS (#2), SOS (#4), Contacts (#12), Chat (#15), Female-Only (#3) complete |
-| 4 — Payments & Earnings | 2/5 🔶 | Splitter (#5), Surge (#13) done; wallet (#9), history (#10), earnings (#16) missing |
-| 5 — Admin & Quality | 2/4 🔶 | Complaints (#17), Eco (#20) done; reviews (#7), cancellation (#18) missing |
+| 4 — Payments & Earnings | 5/5 ✅ | Splitter (#5), Surge (#13), Wallet (#9), History (#10), Earnings (#16) |
+| 5 — Admin & Quality | 4/4 ✅ | Complaints (#17), Eco (#20), Reviews (#7), Cancellation (#18) |
 
 ## 4. Verification evidence (2026-07-31)
 

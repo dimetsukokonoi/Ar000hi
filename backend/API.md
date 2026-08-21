@@ -45,12 +45,14 @@ Minimal ride lifecycle. New tables: `rides`, `ride_passengers`. Full matching/bo
 | POST | `/api/rides/{ride_id}/end` | driver | `{}` or `{ distance_km? }` | `{ message, distance_km }` |
 | GET | `/api/rides/{ride_id}/split` | participant | — | cost split breakdown (see below) |
 | GET | `/api/rides/{ride_id}/messages` | participant | — | `[{ id, sender_id, sender_name, message, created_at }]` |
+| GET | `/api/rides/{ride_id}/cancellation-policy` | participant | — | penalty preview, no side effects |
+| POST | `/api/rides/{ride_id}/cancel` | participant | `{ reason? }` | `{ message, cancelled, penalty_charged, wallet_balance, was_dispatched }` |
 
 Notes:
 - **create** captures the current surge multiplier into the ride; `total_seats` defaults to 4.
 - **join** is seat-aware: `seats + already-accepted seats` must be `<= total_seats`, else `409` "not enough seats". Passengers requesting more seats than remaining get the error.
 - **end** estimates distance from the **full path length** of the most recent inactive GPS tracking session, else from a BRACU zone lookup (`ZONES` in `rides.py`), else 5 km default.
-- Ride status flow: `scheduled -> active -> completed` (or `cancelled`, reserved for future).
+- Ride status flow: `scheduled -> active -> completed` or `cancelled`.
 - Any verified user can create a ride for demo purposes.
 
 ### Cost Splitter — `GET /api/rides/{ride_id}/split`
@@ -123,6 +125,87 @@ Formula per completed ride: `saved = distance x 0.13 kg/km x (1 - 1/occupancy)`,
 
 ---
 
+## 6. Wallet & bKash  (`/api/wallet`) — Feature 9
+
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| GET | `/api/wallet` | yes | — | `{ balance, currency, totals, transactions[] }` (20 most recent) |
+| GET | `/api/wallet/transactions` | yes | `?limit=` | `{ transactions[] }` (max 500) |
+| POST | `/api/wallet/topup` | yes | `{ amount, method?, account? }` | `{ message, mocked, gateway, transaction, balance }` |
+
+- `wallets.balance` is a **cache**; the truth is the append-only `wallet_transactions`
+  ledger, where each row stores the `balance_after` it produced.
+- Amounts are always passed positive; the sign comes from `kind`
+  (`topup`/`payout`/`refund` credit, `fare`/`penalty` debit), so a caller cannot
+  accidentally credit a penalty.
+- A penalty is recorded even when it overdraws the wallet — otherwise cancelling with
+  a zero balance would be free. The negative balance settles on the next top-up.
+- bKash is mocked in `_mock_bkash_charge()`; replacing that one function is the whole
+  integration. Top-up range: 10-25000 BDT.
+
+---
+
+## 7. Ride History & Receipts  (`/api/history`) — Feature 10
+
+| Method | Path | Auth | Query | Returns |
+|---|---|---|---|---|
+| GET | `/api/history` | yes | `?role=all\|driver\|passenger` | `{ trips[], summary }` |
+| GET | `/api/history/{ride_id}/receipt` | participant | — | printable receipt payload |
+
+- A trip is "past" when the ride reached `completed`/`cancelled` **or** the caller's own
+  seat is `cancelled` (a passenger dropping out of a still-running ride).
+- `status` is reported from the caller's point of view: a passenger who cancelled sees
+  `cancelled` even if the ride itself completed.
+- The receipt reuses `_split_total()` from the cost splitter, so it can never disagree
+  with the fare split shown during the ride.
+
+---
+
+## 8. Driver Earnings  (`/api/earnings`) — Feature 16
+
+| Method | Path | Auth | Returns |
+|---|---|---|---|
+| GET | `/api/earnings/summary` | yes | lifetime + weekly totals, `pending_payout`, per-ride breakdown |
+| POST | `/api/earnings/payout` | yes | `{ message, rides_paid, amount, balance }` |
+
+- Gross per ride is `base_fare x surge_multiplier` — the same number the passengers
+  split. Net is gross minus a 10% platform fee.
+- Weeks bucket by the **Monday** of the ride's `ended_at`.
+- A ride counts as paid once a `payout` ledger row carries its `ride_id`, which is what
+  makes `POST /payout` idempotent: a second call finds nothing pending and returns 400.
+
+---
+
+## 9. Ratings & Reviews  (`/api/reviews`) — Feature 7
+
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| POST | `/api/reviews` | participant | `{ ride_id, reviewee_id, stars, comment? }` | `{ message, review_id, stars, reviewee_rating }` |
+| GET | `/api/reviews/pending` | yes | — | completed rides still awaiting the caller's review |
+| GET | `/api/reviews/me` | yes | — | reviews received + average + histogram |
+| GET | `/api/reviews/driver/{driver_id}` | yes | — | same shape, for any driver's profile |
+
+- Enforced: participants only, completed rides only, never yourself, and exactly once
+  per `(ride, reviewer, reviewee)` — the last one by a DB `UNIQUE` constraint, so the
+  409 holds even under a race. `stars` is 1-5 (DB `CHECK` too); comment max 500 chars.
+
+---
+
+## 10. Cancellation Policy & Penalty — Feature 18
+
+Endpoints live under `/api/rides` (table above).
+
+- **Dispatch** = the driver pressed Start (`status = 'active'`, `started_at` set).
+- Cancelling **before** dispatch is free. **After** dispatch costs
+  `20% of your fare exposure`, clamped to `[20, 150]` BDT, charged to the wallet.
+  A driver's exposure is the whole ride total; a passenger's is their seat share.
+- `GET /cancellation-policy` and `POST /cancel` share one `_cancellation_quote()`
+  helper, so the warning shown and the amount charged cannot drift apart.
+- Driver cancelling cancels the ride and every active seat; a passenger cancelling
+  releases only their own seat.
+
+---
+
 ## Quick demo flow (two accounts)
 
 1. Register + verify two BRACU emails (`POST /api/auth/register`, `POST /api/auth/verify-otp`).
@@ -132,3 +215,10 @@ Formula per completed ride: `saved = distance x 0.13 kg/km x (1 - 1/occupancy)`,
 5. Any participant: `GET /api/rides/{id}/split` and `GET /api/rides/{id}/messages`.
 6. Open two WebSocket clients to `/ws/chat/{id}?token=...` to chat.
 7. `GET /api/eco/stats` shows the completed ride's CO2 savings.
+8. Rider: `POST /api/wallet/topup` `{ amount: 500 }`, then `GET /api/history` and
+   `GET /api/history/{id}/receipt`.
+9. Rider: `POST /api/reviews` `{ ride_id, reviewee_id: <driver>, stars: 5 }`;
+   check it on `GET /api/reviews/driver/{driver_id}`.
+10. Driver: `GET /api/earnings/summary`, then `POST /api/earnings/payout`.
+11. Cancellation: start a second ride, then as the rider
+    `GET /api/rides/{id}/cancellation-policy` (preview) and `POST /api/rides/{id}/cancel`.
