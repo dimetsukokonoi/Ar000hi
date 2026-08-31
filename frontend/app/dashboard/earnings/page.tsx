@@ -1,266 +1,403 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { API } from "@/lib/api";
 
-// Feature 16: Driver Earnings Dashboard — aggregates completed rides, no new schema.
+// Feature 16: Driver Earnings Dashboard
+//
+// Reads the wallet LEDGER, never a second computation over `rides` — the figure
+// here and the figure in the wallet are the same number by construction.
+//
+// Chart notes: one series, so no legend (the heading names it). Fill is #00a888,
+// a step of the brand teal chosen to sit inside the dark-mode lightness band
+// (--primary #00d4aa is L0.775, too light for a fill on this surface). Values are
+// direct-labelled only on the peak and the current week; everything else is on
+// hover. A table toggle carries the same data for non-visual reading.
 
-interface EarningRide {
-  ride_id: string;
-  source: string;
-  destination: string;
-  base_fare: number;
-  surge_multiplier: number;
-  gross: number;
-  net: number;
-  passengers: number;
-  distance_km: number | null;
-  ended_at: string | null;
-  paid_out: boolean;
-  week_start: string;
+const SERIES = "#00a888";
+const SERIES_HOVER = "#00c49c";
+
+/** Round the axis up to a readable maximum so ticks land on 100/250/500 style
+ *  numbers instead of max-times-a-fraction (350 -> 263 -> 175 -> 88). */
+function niceAxisMax(max: number, intervals = 4): number {
+  if (max <= 0) return 0;
+  const rough = max / intervals;
+  const exp = Math.pow(10, Math.floor(Math.log10(rough)));
+  const frac = rough / exp;
+  const niceFrac = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 2.5 ? 2.5 : frac <= 5 ? 5 : 10;
+  return niceFrac * exp * intervals;
+}
+
+interface Summary {
+  total_earned: number;
+  total_platform_fees: number;
+  gross_earned: number;
+  rides_paid: number;
+  avg_per_ride: number;
+  this_week: number;
+  this_week_rides: number;
+  last_week: number;
+  change_pct: number;
+  available_payout: number;
+  total_distance_km: number;
+  total_passengers: number;
+  unsettled_rides: number;
+  unsettled_value: number;
+  fully_unpaid_rides: number;
+  partially_paid_rides: number;
+  week_starting: string;
 }
 
 interface Week {
   week_start: string;
+  label: string;
+  amount: number;
   rides: number;
+  is_current: boolean;
+}
+
+interface RideRow {
+  ride_id: string;
+  source: string;
+  destination: string;
+  when: string;
+  distance_km: number | null;
+  passengers: number;
   gross: number;
+  platform_fee: number;
   net: number;
+  settled: boolean;
+  shortfall: number;
 }
 
-interface Summary {
-  rides_completed: number;
-  total_gross: number;
-  total_net: number;
-  platform_fee_rate: number;
-  platform_fee_total: number;
-  pending_payout: number;
-  total_km: number;
-  passengers_served: number;
-  avg_per_ride: number;
-  this_week: Week;
-  best_week: Week | null;
-  weekly: Week[];
-  rides: EarningRide[];
-}
+const taka = (n: number) =>
+  "৳" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const weekLabel = (iso: string) => {
-  if (iso === "unknown") return "Undated";
-  const d = new Date(iso);
-  return d.toLocaleDateString([], { day: "numeric", month: "short" });
-};
+function StatTile({ label, value, sub, tone }: {
+  label: string; value: string; sub?: string; tone?: "good" | "warn";
+}) {
+  const color =
+    tone === "good" ? "var(--success)" : tone === "warn" ? "var(--warning)" : "var(--text-primary)";
+  return (
+    <div className="glass-card" style={{ padding: 20 }}>
+      <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)", textTransform: "uppercase",
+                    letterSpacing: "0.08em", fontWeight: 600, marginBottom: 8 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "1.9rem", fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+      {sub && (
+        <div style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginTop: 6 }}>{sub}</div>
+      )}
+    </div>
+  );
+}
 
 export default function EarningsPage() {
-  const [data, setData] = useState<Summary | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [weeks, setWeeks] = useState<Week[]>([]);
+  const [maxWeek, setMaxWeek] = useState(0);
+  const [rides, setRides] = useState<RideRow[]>([]);
+  const [hover, setHover] = useState<number | null>(null);
+  const [asTable, setAsTable] = useState(false);
   const [error, setError] = useState("");
-  const [paying, setPaying] = useState(false);
-  const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const headers = useMemo(
+    () => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }),
+    [token]
+  );
 
-  // setState only inside promise callbacks — never synchronously in the effect body.
-  const load = useCallback(() => {
+  const fetchAll = useCallback(async () => {
+    const [s, w, r] = await Promise.all([
+      fetch(`${API}/earnings/summary`, { headers }).then(x => x.json()),
+      fetch(`${API}/earnings/weekly?weeks=8`, { headers }).then(x => x.json()),
+      fetch(`${API}/earnings/rides?limit=25`, { headers }).then(x => x.json()),
+    ]);
+    return { s: s as Summary, w: w as { weeks: Week[]; max: number }, r: (Array.isArray(r) ? r : []) as RideRow[] };
+  }, [headers]);
+
+  useEffect(() => {
     if (!token) return;
-    fetch(`${API}/earnings/summary`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    })
-      .then(res => (res.ok ? res.json() : Promise.reject(new Error("failed"))))
-      .then(setData)
-      .catch(() => setError("Could not load your earnings right now."));
-  }, [token]);
+    let cancelled = false;
+    fetchAll()
+      .then(({ s, w, r }) => {
+        if (cancelled) return;
+        setSummary(s);
+        setWeeks(w.weeks || []);
+        setMaxWeek(w.max || 0);
+        setRides(r);
+      })
+      .catch(() => { if (!cancelled) setError("Could not load your earnings."); });
+    return () => { cancelled = true; };
+  }, [token, fetchAll]);
 
-  useEffect(() => { load(); }, [load]);
+  if (error) {
+    return (
+      <div className="glass-card" style={{ padding: 24, color: "var(--danger)" }}>⚠️ {error}</div>
+    );
+  }
+  if (!summary) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 64 }}>
+        <span className="spinner spinner-lg" />
+      </div>
+    );
+  }
 
-  const showNotice = (type: "success" | "error", text: string) => {
-    setNotice({ type, text });
-    setTimeout(() => setNotice(null), 4000);
-  };
-
-  const cashOut = async () => {
-    setPaying(true);
-    try {
-      const res = await fetch(`${API}/earnings/payout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const body = await res.json();
-      if (res.ok) {
-        showNotice("success", body.message);
-        load();
-      } else {
-        showNotice("error", body.detail || "Payout failed");
-      }
-    } catch {
-      showNotice("error", "Network error — could not request a payout");
-    } finally {
-      setPaying(false);
-    }
-  };
-
-  // Bar heights are relative to the best week in the window.
-  const peak = data ? Math.max(...data.weekly.map(w => w.net), 1) : 1;
+  const up = summary.change_pct >= 0;
+  const hasEarnings = summary.rides_paid > 0;
+  const axisMax = niceAxisMax(maxWeek);
 
   return (
-    <>
+    <div>
       <div className="page-header">
-        <h1 className="page-title">📊 Driver Earnings</h1>
+        <h1 className="page-title">💰 Driver Earnings</h1>
         <p className="page-subtitle">
-          What your completed rides paid, week by week, and what is waiting to be cashed out
+          What your completed rides actually paid into your wallet.
         </p>
       </div>
 
-      {notice && (
-        <div className={`toast toast-${notice.type}`} style={{ marginBottom: 20 }}>
-          <span>{notice.type === "success" ? "✅" : "⚠️"}</span>
-          <span>{notice.text}</span>
-        </div>
-      )}
+      {/* Headline numbers — magnitude with no comparison needed, so tiles, not a chart */}
+      <div className="stats-grid" style={{ marginBottom: 20 }}>
+        <StatTile
+          label="Total Earned"
+          value={taka(summary.total_earned)}
+          sub={`${summary.rides_paid} paid ride${summary.rides_paid === 1 ? "" : "s"} · avg ${taka(summary.avg_per_ride)}`}
+          tone="good"
+        />
+        <StatTile
+          label="Ready to Cash Out"
+          value={taka(summary.available_payout)}
+          sub="Current wallet balance"
+        />
+        <StatTile
+          label="This Week"
+          value={taka(summary.this_week)}
+          sub={
+            summary.last_week > 0
+              ? `${up ? "▲" : "▼"} ${Math.abs(summary.change_pct)}% vs last week (${taka(summary.last_week)})`
+              : "No earnings last week"
+          }
+        />
+        <StatTile
+          label="Distance Driven"
+          value={`${summary.total_distance_km.toFixed(1)} km`}
+          sub={`${summary.total_passengers} passenger${summary.total_passengers === 1 ? "" : "s"} carried`}
+        />
+      </div>
 
-      {error && (
-        <div className="glass-card" style={{ textAlign: "center", padding: 48, color: "var(--text-tertiary)" }}>
-          <div style={{ fontSize: "3rem", marginBottom: 16 }}>⚠️</div>
-          <div style={{ fontWeight: 600, color: "var(--text-secondary)" }}>{error}</div>
-        </div>
-      )}
-
-      {!error && !data && (
-        <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
-          <span className="spinner spinner-lg" />
-        </div>
-      )}
-
-      {data && data.rides_completed === 0 && (
-        <div className="glass-card" style={{ textAlign: "center", padding: 48, color: "var(--text-tertiary)" }}>
-          <div style={{ fontSize: "3rem", marginBottom: 16 }}>📊</div>
-          <div style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>No earnings yet</div>
-          <div style={{ fontSize: "0.85rem" }}>Complete a ride as a driver and it will show up here</div>
-        </div>
-      )}
-
-      {data && data.rides_completed > 0 && (
-        <>
-          <div className="stats-grid" style={{ marginBottom: 24 }}>
-            <div className="glass-card stat-card">
-              <div className="stat-icon" style={{ background: "var(--success-muted)" }}>💰</div>
-              <div className="stat-value">৳{data.total_net.toFixed(2)}</div>
-              <div className="stat-label">Total earned (after fees)</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div className="stat-icon" style={{ background: "var(--primary-muted)" }}>🚗</div>
-              <div className="stat-value">{data.rides_completed}</div>
-              <div className="stat-label">Rides completed</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div className="stat-icon" style={{ background: "var(--info-muted)" }}>📅</div>
-              <div className="stat-value">৳{data.this_week.net.toFixed(2)}</div>
-              <div className="stat-label">This week ({data.this_week.rides} rides)</div>
-            </div>
-            <div className="glass-card stat-card">
-              <div className="stat-icon" style={{ background: "var(--accent-muted)" }}>🧾</div>
-              <div className="stat-value">৳{data.avg_per_ride.toFixed(2)}</div>
-              <div className="stat-label">Average per ride</div>
-            </div>
+      {/* Unsettled rides are lost income, so they get a status treatment with an
+          icon + label, never colour alone. */}
+      {summary.unsettled_rides > 0 && (
+        <div
+          className="glass-card"
+          style={{ padding: "14px 18px", marginBottom: 20, borderLeft: "3px solid var(--warning)" }}
+        >
+          <div style={{ color: "var(--warning)", fontWeight: 700, fontSize: "0.88rem", marginBottom: 4 }}>
+            ⚠️ {taka(summary.unsettled_value)} uncollected across {summary.unsettled_rides} ride
+            {summary.unsettled_rides === 1 ? "" : "s"}
           </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+            {summary.fully_unpaid_rides > 0 && (
+              <>{summary.fully_unpaid_rides} ride{summary.fully_unpaid_rides === 1 ? "" : "s"} went
+              entirely unpaid{summary.partially_paid_rides > 0 ? "; " : ". "}</>
+            )}
+            {summary.partially_paid_rides > 0 && (
+              <>{summary.partially_paid_rides} ride{summary.partially_paid_rides === 1 ? "" : "s"}{" "}
+              settled only partially, where some passengers paid and others could not. </>
+            )}
+            A fare goes uncollected when a passenger&apos;s wallet cannot cover their share, or the
+            ride finished before wallets existed. Only money actually received is counted above.
+          </div>
+        </div>
+      )}
 
-          {/* Payout */}
-          <div
-            className="glass-card"
-            style={{
-              padding: 24, marginBottom: 24, display: "flex", alignItems: "center",
-              justifyContent: "space-between", gap: 16, flexWrap: "wrap",
-              border: data.pending_payout > 0 ? "1px solid rgba(16,185,129,0.35)" : undefined,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: 1 }}>
-                Upcoming payout
-              </div>
-              <div style={{ fontSize: "1.9rem", fontWeight: 800, color: data.pending_payout > 0 ? "var(--success)" : "var(--text-secondary)" }}>
-                ৳{data.pending_payout.toFixed(2)}
-              </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-tertiary)", marginTop: 4 }}>
-                Arooohi keeps {Math.round(data.platform_fee_rate * 100)}% (৳{data.platform_fee_total.toFixed(2)} so far) ·
-                {" "}gross ৳{data.total_gross.toFixed(2)}
+      {/* Weekly earnings — change over time across few discrete buckets, so bars */}
+      <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                      marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <h2 style={{ fontSize: "1.05rem" }}>Weekly Earnings</h2>
+            <p style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginTop: 2 }}>
+              Last 8 weeks · Asia/Dhaka · week starts Monday
+            </p>
+          </div>
+          <button onClick={() => setAsTable(v => !v)} className="btn btn-ghost btn-sm">
+            {asTable ? "Show chart" : "Show table"}
+          </button>
+        </div>
+
+        {!hasEarnings ? (
+          <p style={{ color: "var(--text-tertiary)", fontSize: "0.88rem", padding: "20px 0" }}>
+            No earnings yet. Offer a ride from{" "}
+            <Link href="/dashboard/rides" style={{ color: "var(--primary)" }}>Rides &amp; Surge</Link>{" "}
+            — once it completes, the fare lands in your wallet and shows up here.
+          </p>
+        ) : asTable ? (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>Week beginning</th><th style={{ textAlign: "right" }}>Rides</th><th style={{ textAlign: "right" }}>Earned</th></tr>
+              </thead>
+              <tbody>
+                {weeks.map(w => (
+                  <tr key={w.week_start}>
+                    <td>{w.label}{w.is_current && " (current)"}</td>
+                    <td style={{ textAlign: "right" }}>{w.rides}</td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }}>{taka(w.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            {/* Recessive gridlines + y labels */}
+            <div style={{ position: "relative", height: 200, marginLeft: 54 }}>
+              {[1, 0.75, 0.5, 0.25, 0].map(f => (
+                <div key={f} style={{ position: "absolute", left: 0, right: 0, bottom: `${f * 100}%`,
+                                      borderTop: "1px solid var(--surface-border)" }}>
+                  <span style={{ position: "absolute", right: "100%", paddingRight: 10, top: -7,
+                                 fontSize: "0.68rem", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
+                    {axisMax > 0 ? Math.round(axisMax * f).toLocaleString() : 0}
+                  </span>
+                </div>
+              ))}
+
+              {/* Bars: anchored to the baseline, 4px rounded data-end, 2px gap */}
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", gap: 2 }}>
+                {weeks.map((w, i) => {
+                  const pct = axisMax > 0 ? (w.amount / axisMax) * 100 : 0;
+                  const isPeak = w.amount === maxWeek && maxWeek > 0;
+                  const active = hover === i;
+                  return (
+                    <div
+                      key={w.week_start}
+                      onMouseEnter={() => setHover(i)}
+                      onMouseLeave={() => setHover(null)}
+                      style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end",
+                               position: "relative", cursor: "default" }}
+                    >
+                      {/* Direct labels only on the peak and the current week */}
+                      {(isPeak || w.is_current) && w.amount > 0 && !active && (
+                        <div style={{ position: "absolute", bottom: `calc(${pct}% + 6px)`, left: 0, right: 0,
+                                      textAlign: "center", fontSize: "0.68rem", fontWeight: 700,
+                                      color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                          {Math.round(w.amount).toLocaleString()}
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          width: "100%",
+                          height: `${Math.max(pct, w.amount > 0 ? 1.5 : 0)}%`,
+                          background: active ? SERIES_HOVER : SERIES,
+                          borderRadius: "4px 4px 0 0",
+                          transition: "background 150ms ease",
+                          opacity: w.is_current ? 1 : 0.82,
+                        }}
+                      />
+                      {active && w.amount >= 0 && (
+                        <div
+                          style={{
+                            position: "absolute", bottom: `calc(${pct}% + 10px)`, left: "50%",
+                            transform: "translateX(-50%)", background: "var(--bg-tertiary)",
+                            border: "1px solid var(--surface-border)", borderRadius: "var(--radius-md)",
+                            padding: "8px 12px", whiteSpace: "nowrap", zIndex: 5,
+                            boxShadow: "var(--shadow-md)", pointerEvents: "none",
+                          }}
+                        >
+                          <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>
+                            Week of {w.label}
+                          </div>
+                          <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                            {taka(w.amount)}
+                          </div>
+                          <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>
+                            {w.rides} ride{w.rides === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={cashOut}
-              disabled={paying || data.pending_payout <= 0}
-            >
-              {paying ? <span className="spinner" /> : "Cash out to wallet"}
-            </button>
-          </div>
 
-          {/* Weekly chart */}
-          <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
-            <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 16 }}>Weekly earnings</h3>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 14, height: 170, paddingBottom: 8 }}>
-              {[...data.weekly].reverse().map(w => (
-                <div key={w.week_start} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%", justifyContent: "flex-end" }}>
-                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-secondary)" }}>
-                    ৳{w.net.toFixed(0)}
-                  </div>
-                  <div
-                    title={`${w.rides} rides · net ৳${w.net.toFixed(2)}`}
-                    style={{
-                      width: "100%", maxWidth: 54,
-                      height: `${Math.max((w.net / peak) * 100, 3)}%`,
-                      background: w.week_start === data.this_week.week_start
-                        ? "linear-gradient(180deg, var(--primary), rgba(99,102,241,0.35))"
-                        : "linear-gradient(180deg, rgba(148,163,184,0.55), rgba(148,163,184,0.16))",
-                      borderRadius: "var(--radius-md) var(--radius-md) 4px 4px",
-                      transition: "height 0.5s ease",
-                    }}
-                  />
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>{weekLabel(w.week_start)}</div>
+            {/* X labels */}
+            <div style={{ display: "flex", gap: 2, marginLeft: 54, marginTop: 8 }}>
+              {weeks.map(w => (
+                <div key={w.week_start} style={{ flex: 1, textAlign: "center", fontSize: "0.68rem",
+                       color: w.is_current ? "var(--text-secondary)" : "var(--text-tertiary)",
+                       fontWeight: w.is_current ? 700 : 400 }}>
+                  {w.label}
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: 8 }}>
-              Week beginning Monday · highlighted bar is the current week
-              {data.best_week && ` · best week ৳${data.best_week.net.toFixed(2)}`}
-            </div>
           </div>
+        )}
+      </div>
 
-          {/* Per-ride breakdown */}
-          <div className="glass-card" style={{ padding: 20 }}>
-            <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 4 }}>Ride breakdown</h3>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-tertiary)", marginBottom: 12 }}>
-              Gross is base fare × surge — the same figure the passengers split.
-            </div>
-            {data.rides.map(r => (
-              <div
-                key={r.ride_id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
-                  borderBottom: "1px solid rgba(100,120,200,0.06)", flexWrap: "wrap",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
-                    {r.source} ➜ {r.destination}
-                  </div>
-                  <div style={{ fontSize: "0.74rem", color: "var(--text-tertiary)" }}>
-                    {r.ended_at ? new Date(r.ended_at).toLocaleDateString([], { day: "numeric", month: "short" }) : "—"}
-                    {" · "}{r.passengers} passenger{r.passengers === 1 ? "" : "s"}
-                    {r.distance_km ? ` · ${r.distance_km} km` : ""}
-                  </div>
-                </div>
-                {r.surge_multiplier > 1 && (
-                  <span className="badge badge-danger" style={{ fontSize: "0.7rem" }}>⚡ ×{r.surge_multiplier}</span>
-                )}
-                <span className={`badge ${r.paid_out ? "badge-success" : "badge-warning"}`} style={{ fontSize: "0.7rem" }}>
-                  {r.paid_out ? "Paid out" : "Pending"}
-                </span>
-                <div style={{ textAlign: "right", minWidth: 90 }}>
-                  <div style={{ fontWeight: 700, color: "var(--success)" }}>৳{r.net.toFixed(2)}</div>
-                  <div style={{ fontSize: "0.72rem", color: "var(--text-tertiary)" }}>of ৳{r.gross.toFixed(2)}</div>
-                </div>
-              </div>
-            ))}
+      {/* Per-ride detail */}
+      <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
+        <h2 style={{ fontSize: "1.05rem", marginBottom: 16 }}>Ride Breakdown</h2>
+        {rides.length === 0 ? (
+          <p style={{ color: "var(--text-tertiary)", fontSize: "0.88rem" }}>No completed rides yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Route</th><th style={{ textAlign: "right" }}>Pax</th>
+                  <th style={{ textAlign: "right" }}>Fare</th>
+                  {summary.total_platform_fees > 0 && <th style={{ textAlign: "right" }}>Fee</th>}
+                  <th style={{ textAlign: "right" }}>You earned</th><th>When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rides.map(r => (
+                  <tr key={r.ride_id}>
+                    <td>
+                      <span style={{ color: "var(--text-primary)" }}>{r.source} → {r.destination}</span>
+                      {!r.settled ? (
+                        <span className="badge badge-warning" style={{ marginLeft: 8 }}>⚠️ unpaid</span>
+                      ) : r.shortfall > 0 ? (
+                        <span className="badge badge-warning" style={{ marginLeft: 8 }}>
+                          ⚠️ short {taka(r.shortfall)}
+                        </span>
+                      ) : null}
+                      {r.distance_km ? (
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-tertiary)" }}>
+                          {r.distance_km.toFixed(1)} km
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{r.passengers}</td>
+                    <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{taka(r.gross)}</td>
+                    {summary.total_platform_fees > 0 && (
+                      <td style={{ textAlign: "right", color: "var(--text-tertiary)" }}>
+                        {r.platform_fee ? "−" + taka(r.platform_fee) : "—"}
+                      </td>
+                    )}
+                    <td style={{ textAlign: "right", fontWeight: 700,
+                                 color: r.settled ? "var(--success)" : "var(--text-tertiary)" }}>
+                      {r.settled ? taka(r.net) : "—"}
+                    </td>
+                    <td style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
+                      {r.when ? new Date(r.when.replace(" ", "T") + "Z").toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
-    </>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <Link href="/dashboard/wallet" className="btn btn-primary">💳 Go to Wallet to cash out</Link>
+        <Link href="/dashboard/rides" className="btn btn-ghost">🚗 Offer another ride</Link>
+      </div>
+    </div>
   );
 }

@@ -3,6 +3,7 @@
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf` (Section 7 = Development Plan).
 > Companion doc: [`PROJECT_PROGRESS.md`](./PROJECT_PROGRESS.md) for current status.
 > This file is commit-friendly and team-facing. Private working notes live in `.arooohi-dev/` (git-ignored).
+> **Status column last synced with the codebase: 2026-09-01** (Sprint 4 in progress).
 
 ## 1. Purpose
 
@@ -21,7 +22,7 @@ known code-quality backlog that must be addressed alongside feature work.
 | Frontend | React.js (web) + React Native (mobile) | Next.js 16 (web only) | ⚠ Mobile is out of scope for now |
 | Auth | — | JWT (python-jose HS256) + bcrypt | ✔ |
 | Realtime | REST + WebSockets (SRS 3.3.4) | WebSockets only for ride chat; GPS tracking is 5s HTTP polling | ⚠ See NFR-1 |
-| Payments | bKash API | Wallet ledger (SQLite) + mocked bKash gateway | ⚠ Real bKash still deferred; the mock is isolated in `wallet.py::_mock_bkash_charge()` |
+| Payments | bKash API | Prepaid wallet ledger + simulated tokenized checkout | ⚠ Live gateway needs merchant onboarding; `real_bkash.py` is the swap-in |
 
 ## 3. Sprint Roadmap (from SRS §7) — with acceptance criteria
 
@@ -36,54 +37,149 @@ Legend: ✅ done · 🔶 partial · ❌ not started
 ### Sprint 2 — Ride Matching & Logistics (weeks 3-4)
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
-| 6 | Campus Zone Smart Matching | ✅ | `GET /rides/match` scores rides on pickup/drop-off zone proximity (haversine over `ZONES`), intermediate stops, and class-time flex. |
-| 14 | Campus Pickup Hotspots | ✅ | 12 categorized hotspots + dropdowns in the ride form; geo matching now live via `_haversine_km`. |
-| 8 | Scheduled Ride Booking | ✅ | ISO `scheduled_at` validated on create; datetime picker in the form; "Scheduled" filter tab on the rides page. |
-| 19 | Multi-Stop Ride Support | 🔶 | Backend complete (`ride_stops`, per-passenger pickup/drop-off, stop status endpoint). Frontend reads the wrong field names — see §6.4. |
+| 6 | Campus Zone Smart Matching | ✅ | Riders to the same destination zone (Gate/Library/etc.) are grouped in a matching list. *(`GET /api/rides/match` — multi-factor score: exact pickup +50, ≤1.5 km haversine proximity +35, direct destination +50, intermediate-stop match +45, ±30 min class-time +15; rides scoring <50 are dropped when both filters are given.)* |
+| 14 | Campus Pickup Hotspots | ✅ | Hotspot pins + dropdown in the ride form; `GET /api/rides/hotspots` returns 12 categorized points (campus gates / academic / residential / transit hubs) with coordinates that also power the proximity matching in #6. |
+| 8 | Scheduled Ride Booking | ✅ | Ride can be created for a future time; listing filters by scheduled time. *(`rides.scheduled_at` + ISO parsing, past-time rejection on create, class-time window matching in `/match`.)* |
+| 19 | Multi-Stop Ride Support | ✅ | A ride can have >1 drop-off; route shows ordered stops. *(`ride_stops` table with `sequence` + `status` pending/reached/departed; per-passenger `pickup_stop`/`dropoff_stop` on join; driver-only stop-progress endpoint.)* |
 
 ### Sprint 3 — Tracking & Safety (weeks 5-6)
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
 | 2 | Live GPS Ride Tracking | ✅ | Coordinates update ≤3s; share link shows live position (currently 5s polling, not WS). |
-| 3 | Female-Only Ride Mode | ✅ | `rides.female_only`; gender-gated on create/join/match/list, enforced in SQL; pink-bordered cards + filter tab. |
+| 3 | Female-Only Ride Mode | ✅ | Female users can toggle; male riders/drivers fully hidden from matches. *(`rides.female_only`; only female drivers may create, only female riders may join, and `/match` + ride listing filter them out for everyone else.)* |
 | 4 | In-App SOS Button | ✅ | SOS dispatches mock alerts to saved contacts + campus security with lat/lng; admin can resolve. |
 | 12 | Trusted Contact Sharing | ✅ | Contacts persist in DB; auto-share mocks delivery of ride/tracking link; SOS reads contacts from DB. |
 | 15 | Ride Chat (In-App Messaging) | ✅ | Driver + accepted passengers chat in real time (WS); messages persist; non-participants rejected (4403). |
 
-### Sprint 4 — Payments & Earnings (weeks 7-8)
+### Sprint 4 — Payments & Earnings (weeks 7-8) — ✅ **COMPLETE (5/5)**
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
-| 5 | Ride Cost Splitter | ✅ | total = base_fare × surge; split evenly among accepted passengers; breakdown shown. |
+| 5 | Ride Cost Splitter | ✅ | total = base_fare × surge; split across accepted passengers **weighted by seats** (largest-remainder rounding at paisa resolution, so shares sum exactly to `total`); breakdown shown. |
 | 13 | Peak Hour Surge Indicator | ✅ | Surge reflects current hour (Asia/Dhaka) + live ride volume; badge shown on booking screen. |
-| 9 | Wallet & bKash Integration | ✅ | `wallets` + append-only `wallet_transactions` ledger; mock bKash top-up isolated in `_mock_bkash_charge()`. |
-| 10 | Ride History & Receipt Log | ✅ | `GET /history` (role filter) + `GET /history/{id}/receipt`; printable receipt modal reuses the splitter math. |
-| 16 | Driver Earnings Dashboard | ✅ | `GET /earnings/summary` — weekly buckets, ride count, pending payout; `POST /earnings/payout` sweeps into the wallet. |
+| 9 | Wallet & bKash Integration | ✅ | Prepaid wallet (`wallets` + append-only `transactions` ledger); top-up runs bKash's real tokenized-checkout flow (grant → create → redirect → execute → query) against a simulated gateway selected by `DEMO_MODE`; seat-weighted fare auto-settles rider → driver at `end_ride`; driver cash-out; `/api/wallet/reconcile` proves balance == SUM(ledger). |
+| 10 | Ride History & Receipt Log | ✅ | Past trips list + downloadable receipt. *(Both roles — driver and rider. Receipt is print-to-PDF plus a `.txt` download, amounts read from the ledger, participants-only.)* |
+| 16 | Driver Earnings Dashboard | ✅ | Weekly earnings from completed rides, ride count, upcoming payouts. *(Reads `transactions.kind='ride_credit'` — the wallet ledger — so the dashboard and the wallet cannot disagree. 8-week bar chart bucketed in Asia/Dhaka, per-ride breakdown, and completed-but-unsettled rides surfaced separately instead of being silently dropped.)* |
 
-### Sprint 5 — Quality & Admin Controls (weeks 9-10)
+### Sprint 5 — Quality & Admin Controls (weeks 9-10) — 🚩 **CURRENT SPRINT**
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
-| 7 | Driver Rating & Review | ✅ | `reviews` table with UNIQUE(ride, reviewer, reviewee); post-ride prompt on the history page; average + histogram on the driver profile. |
+| 7 | Driver Rating & Review | ❌ | Post-ride 1-5 star + comment; average shown on driver profile. |
 | 17 | Admin Complaint Panel | ✅ | File complaint; admin review + notes + statuses + stats. |
-| 18 | Ride Cancellation Policy & Penalty | ✅ | Free before dispatch; 20% fee after (floor ৳20, ceiling ৳150) charged to the wallet. Preview endpoint feeds the warning dialog. |
+| 18 | Ride Cancellation Policy & Penalty | ❌ | Cancel before dispatch = free; after dispatch = penalty shown as warning. |
 | 20 | Eco/Footprint Tracker | ✅ | CO₂ saved per completed ride vs solo; aggregated totals + trees/fuel equivalents. |
 
-## 4. Remaining work
+## 4. Recommended build order for the remaining 2 features
 
-All 20 SRS features now have an implementation. What is left is repair and polish,
-not new features:
+Four items from the original nine (#3 Female-Only, #8 Scheduled, #6 Matching, #19 Multi-Stop)
+shipped in the Sprint 2/3 completion pass and have been removed from this list.
 
-1. **Fix the two Feature 19 / Feature 6 frontend field-name mismatches** (see §6.4) —
-   both are silent: the UI renders but the feature does not do what it appears to.
-   *(≈0.5 day)*
-2. **Cap the tracking `points` array + retention policy** (§6.3). *(≈0.5 day)*
-3. ~~**Charge fares to the wallet on ride completion**~~ — ✅ **DONE.** `end_ride` now
-   debits every accepted passenger their seat-weighted share (same `_split_total` math
-   the splitter shows) as a `fare` ledger row. Overdraft is allowed so a broke rider
-   can never block the driver from finishing; the wallet then shows an "You owe ৳X"
-   prompt and the next top-up settles it. `end_ride` also rejects a second call, which
-   would otherwise double-charge.
-4. **Swap the mock bKash gateway for the real API** — replace `_mock_bkash_charge()` in
-   `wallet.py`; nothing else in the app needs to change. *(deferred, needs credentials)*
+Ordering rule changed: the previous list was strictly cheap → expensive, which is what pulled
+Sprint-5 work ahead of unfinished Sprint-4 work. It is now **sprint-first, then cheap → expensive
+within a sprint**, so Sprint 4 closes before Sprint 5 opens.
+
+### Sprint 4 (current) — must close first
+~~1. **Driver Earnings Dashboard (#16)**~~ — ✅ **DONE (2026-09-01).** Built on the wallet
+   ledger rather than the `rides` re-aggregation originally sketched here — see §4.2.
+~~2. **Ride History & Receipt Log (#10)**~~ — ✅ **DONE (2026-09-01).** Closes Sprint 4.
+   See §4.3.
+~~3. **Wallet & bKash Integration (#9)**~~ — ✅ **DONE (2026-09-01).** Prepaid ledger +
+   simulated bKash tokenized checkout. Architecture in §4.1 below.
+
+### Sprint 5 — after Sprint 4 is green
+4. **Driver Rating & Review (#7)** — add `reviews` table (ride_id, reviewer_id, reviewee_id, stars, comment); post-ride prompt on ride detail; avg rating on the driver listing. *(≈1 day)*
+5. **Ride Cancellation Policy & Penalty (#18)** — `rides.status` already accepts `'cancelled'` in its CHECK constraint but **no route ever sets it**; add the cancel flow + penalty fee (rider cancels after driver accepted → fee) + frontend warning modal. *(≈1 day)*
+
+**Real-time GPS upgrade (recommended, high value):** convert `/track/[token]` + dashboard tracking to a WebSocket (the chat WS in `backend/app/routes/chat.py` is a ready template). Meets NFR-1 (<2s SOS/live updates) and SRS 3.3.4.
+
+### 4.1 Wallet architecture as built (#9)
+
+**Money model — prepaid ledger.** The gateway is touched only at the edges (top-up in,
+cash-out out); ride settlement is an internal wallet-to-wallet transfer, so a ride can
+always settle even with no network.
+
+**Gateway — simulated, real flow.** `app/payments/` defines a `PaymentGateway` interface
+with two implementations chosen by `DEMO_MODE`: `mock_bkash.py` (local, deterministic test
+numbers) and `real_bkash.py` (live `tokenized.sandbox.bka.sh` calls via stdlib urllib, so
+no new dependency). Switching to the live gateway changes **no route, table or page** —
+only which class the factory returns. Credentials come from `BKASH_APP_KEY`,
+`BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD` and are never committed.
+
+**Safety properties enforced in `wallet_service.py`:**
+- *Append-only ledger.* `transactions` is never UPDATEd or DELETEd; a correction is a new
+  opposing row. `wallets.balance` is a cached mirror, verified by `/api/wallet/reconcile`.
+- *Atomicity.* Rider debit + driver credit run inside one `BEGIN IMMEDIATE` transaction.
+- *Idempotency.* `uq_transactions_ride_leg(ride_id, user_id, kind)` makes a second
+  settlement a no-op; `uq_transactions_payment(payment_id)` makes a re-executed top-up a
+  no-op. Both are exercised by the verification run.
+- *No invented money.* A passenger who cannot pay is recorded as unsettled and the driver
+  is simply not credited for that leg.
+- *Trust boundary.* The gateway redirect carries `?status=`, which is **ignored**; only the
+  server-side `execute_payment()` can credit a wallet.
+- *Gateway durability.* The simulated gateway rehydrates any unknown paymentID from its
+  `bkash_payments` row. Found in the post-build audit: with purely in-memory state an
+  authorised-but-unexecuted payment became permanently unexecutable after a restart, and
+  `uvicorn --reload` restarts on every code edit. Fixed and regression-tested.
+
+**Commission.** `transactions.platform_fee` exists and is populated, with
+`PLATFORM_COMMISSION_RATE` defaulting to `0.0` — enabling a cut later is a config change,
+not a migration plus backfill.
+
+**Deliberately out of scope:** refunds and cancellation penalties, which belong to Sprint 5
+#18 Ride Cancellation Policy. The `refund` ledger kind is reserved so #18 can post
+reversals without a schema change.
+
+### 4.2 Driver Earnings as built (#16)
+
+**Source of truth: the ledger, not a recomputation.** This item originally proposed
+re-deriving earnings from `base_fare × surge_multiplier`. Once #9 landed that became the
+wrong call: a driver earned exactly what was credited to them, so the dashboard reads
+`transactions.kind = 'ride_credit'`. Deriving the number a second way would let the
+earnings screen and the wallet disagree — the classic way a payments UI loses trust.
+
+**Endpoints** (`/api/earnings`): `summary` (lifetime net, ride count, this week vs last,
+payout ready, distance, passengers), `weekly?weeks=8` (per-ISO-week series), and
+`rides?limit=25` (per-ride breakdown).
+
+**Unsettled rides are reported, not hidden.** A completed ride with no `ride_credit` row
+— it finished before wallets existed, or a passenger could not pay — appears in its own
+warning band with the amount that was never received, and is excluded from every total.
+Silently dropping those rides would under-report; folding them in would over-report.
+
+**Weeks are bucketed in Asia/Dhaka** (matching the surge schedule) with empty weeks kept,
+so an idle stretch reads as idle instead of compressing the time axis.
+
+**Chart.** One series, so no legend — the heading names it. Fill `#00a888`, a deeper step
+of the brand teal: `--primary` (#00d4aa) sits at OKLCH L 0.775, outside the 0.48–0.67
+dark-mode band, and was rejected by the palette validator. Axis ticks are snapped to
+round values, values are direct-labelled only on the peak and the current week, all bars
+carry a hover tooltip, and a table toggle exposes the same data non-visually.
+
+### 4.3 Ride History & Receipts as built (#10)
+
+**Both roles, one log.** #16 answers "what did I earn as a driver"; this answers "where
+have I been and what did it cost me" for riders too. A rider with no driver profile still
+gets a full trip list and a receipt for every ride.
+
+**No new schema**, as planned — reads `rides`, `ride_passengers`, `ride_stops` and
+`transactions`.
+
+**Amounts come from the ledger**, consistent with #9 and #16: a settled ride reports its
+actual `ride_debit` / `ride_credit` row; an unsettled one reports what was *owed* and is
+flagged unpaid, rather than showing a misleading zero. The receipt shows expected vs
+actual side by side in that case.
+
+**One receipt, two views.** Driver and rider on the same ride get the **same receipt
+number** (`ARH-YYYYMMDD-XXXXXX`, deterministic from the ride id) but role-appropriate
+lines: the driver sees "Fare received from passengers", the rider sees "Your share of the
+fare". Verified: the riders' shares sum exactly to the driver's credit and to the
+splitter's total.
+
+**Downloadable two ways**, both dependency-free: `window.print()` with a print stylesheet
+that strips the sidebar and buttons (the "frontend print/PDF" route the plan proposed),
+and a Blob `.txt` download named after the receipt number.
+
+**Access control:** receipts are participants-only — a non-participant gets 403, an unknown
+ride 404.
 
 ## 5. Non-Functional Requirements — gap checklist
 
@@ -105,6 +201,11 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 > `live-test.js`, screenshots committed in `demo/live-test-screenshots/`) and caught
 > one last bug, now fixed: chat spam-guard closed HTTP 403 instead of WS 4429.
 > Unchecked items below are remaining/out-of-scope.
+>
+> **Update (2026-08-31, start of Sprint 4):** the Sprint 2/3 completion pass landed after
+> the note above — features #3, #6, #8, #14 and #19 are now implemented, and a first
+> pytest file (`backend/tests/test_campus_features.py`) is committed. §3's status column
+> and §4's build order have been re-synced with the codebase; §6.3's test items updated.
 
 ### 6.1 Security (🔴) — ✅ ALL DONE (Session 9)
 - ✅ **Hardcoded JWT secret fallback** — `auth.py`. Warns on default secret; fails fast when `DEMO_MODE != 1`.
@@ -136,8 +237,9 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ❌ **Duplicate participant check** — `rides.py` + `chat.py`. Extract a shared `is_ride_participant()` helper.
 - ✅ **SQLite hardening** — WAL + `busy_timeout` + FK indexes on the 6 join/lookup tables (`database.py`).
 - ❌ **`init_db()` at import time** — move to FastAPI lifespan.
-- ❌ **`requirements.txt` stale** — refresh pins to the tested versions.
-- ⏳ **No automated tests in repo** — regression script at `/tmp/opencode/test_backend.py` (54 checks, throwaway DB); port into `backend/tests/` pytest suite.
+- ❌ **`requirements.txt` stale** — refresh pins to the tested versions. Also: `passlib` is listed but never imported (only referenced in an `auth.py` comment), while `bcrypt` — imported directly by `app/auth.py` and `app/database.py` — is pulled in only as a transitive extra of `passlib[bcrypt]`. Pin `bcrypt` explicitly and drop `passlib`. `pytest` and `httpx` are absent entirely.
+- 🔶 **Test suite partially committed** — `backend/tests/test_campus_features.py` is now in the repo (5 pytest cases covering #14 hotspots, #3 female-only, #19 multi-stop, #6 matching, #8 scheduled; isolated throwaway DB via `DATABASE_PATH`). Still to port: the 54-check backend regression script (`/tmp/opencode/test_backend.py`) and coverage for auth / tracking / SOS / chat / eco / complaints.
+- ❌ **Committed test suite cannot run as-is** — `requirements.txt` lists neither `pytest` nor `httpx` (required by FastAPI's `TestClient`), and `test_campus_features.py` hardcodes the POSIX path `/tmp/test_arooohi.db`, which does not resolve on Windows. Add both pins and derive the temp DB path from `tempfile.gettempdir()`.
 - ⏳ **Live e2e harness not committed (Session 10)** — Playwright suite at `/tmp/opencode/e2e/live-test.js` (45 checks, 45/45 green); port into a `backend/` or `e2e/` folder for CI.
 - ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run the Playwright suite against BOTH engines to prove it, and add the frontend feature-map as a `/demo` page.
 - ❌ **Mock notifications scattered** — consolidate into a `notifications.py` service.
@@ -146,7 +248,6 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **One-command launcher** — `./launch.py` / `./launch.sh` / `launch.bat`: starts backend+frontend, renders the logo, opens the site fullscreen (F11 to toggle, `--windowed` to skip), auto-stops + WAL-checkpoints the DB when the browser closes, plus `--no-browser`/`--browser chrome|firefox`/`--detect`/`status`/`stop`. Cross-platform (pure stdlib; tested on Linux, code-reviewed for macOS/Windows).
 
 ### 6.4 Frontend bugs & UX (🟡)
-- ✅ **Ride lifecycle had no UI at all** — `dashboard/rides/page.tsx`. `POST /rides/{id}/accept/{pid}`, `/start` and `/end` existed on the backend but had zero frontend callers, so a driver could not run a ride from the browser and six finished features (#5, #7, #10, #16, #18, #20) had no demonstrable path. Added driver-only **Manage Requests** (with a pending-count badge), **Accept**, **Start Ride** and **End Ride**, each gated on ride status. `GET /rides` now also returns `pending_requests` so a booking is visible without opening the ride.
 - ✅ **Tracking page: duplicate point sources + leak on unmount** — `dashboard/page.tsx`. Single `recordPoint`, `sessionRef` guard, unmount cleanup, `headers` memoized.
 - ❌ **Unbounded `points` array + DB bloat** — cap client points; add retention policy.
 - ✅ **Ride chat link shown to non-participants** — `dashboard/rides/page.tsx`. Gated to `mine || ride.driver_id === me`.
@@ -156,8 +257,6 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **Surge schedule endpoint unused** — rides page shows an hourly "upcoming peak" strip + current-hour marker (fulfils SRS #13).
 - ✅ **Map re-centers on every GPS tick** — `TrackingMap.tsx`. Auto-follow only until the user interacts + "🎯 Re-center" button.
 - ✅ **Track page polls after session ended** — `track/[token]/page.tsx`. Stops polling when `is_active=false`.
-- ❌ **Multi-stop panel never renders (Feature 19)** — `dashboard/rides/page.tsx` guards on `ride.stop_details` and reads `stop.stop_order` / `stop.stop_name`, but the API returns `stops` with `sequence` / `place` (`rides.py` `_ser()` and `get_ride()`). The driver's "Mark Reached / Mark Departed" controls are therefore unreachable. Also `getHotspotName(stop)` at the route-path line treats each stop as a string while the API sends an object.
-- ❌ **Smart matching ignores its filters (Feature 6)** — the page requests `?pickup=&dropoff=&class_time=` but `match_rides()` declares `source`, `destination`, `scheduled_time`. FastAPI drops unknown query params, so all three arrive as `None` and the endpoint returns unfiltered results. Only `female_only` lines up.
 
 ## 7. Definition of Done (per feature)
 

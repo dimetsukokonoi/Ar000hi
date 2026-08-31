@@ -16,9 +16,6 @@ interface DriverProfile {
 
 export default function DriverVerificationPage() {
   const [status, setStatus] = useState<string>("loading");
-  // Feature 7: the driver's public star rating, shown on their own profile
-  const [rating, setRating] = useState<{ average: number | null; count: number } | null>(null);
-  const [reviews, setReviews] = useState<{ id: string; stars: number; comment: string; reviewer_name: string; route: string }[]>([]);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [form, setForm] = useState({ vehicle_type: "bike", vehicle_model: "", vehicle_plate: "" });
   const [files, setFiles] = useState<{ nid: File | null; license: File | null; vehicle: File | null }>({ nid: null, license: null, vehicle: null });
@@ -34,14 +31,8 @@ export default function DriverVerificationPage() {
       .then(data => {
         setStatus(data.status);
         setProfile(data.profile);
-        setRating(data.rating ?? null);
       })
       .catch(() => setStatus("not_submitted"));
-
-    fetch(`${API}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) { setRating({ average: d.average, count: d.count }); setReviews(d.reviews || []); } })
-      .catch(() => {});
   }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,47 +101,6 @@ export default function DriverVerificationPage() {
               ✅ You are a verified driver! You can now accept rides.
             </div>
           )}
-        </div>
-      )}
-
-      {/* Feature 7: Driver Rating & Review — average on the driver's profile */}
-      {rating && (
-        <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
-            <div style={{ textAlign: "center", minWidth: 120 }}>
-              <div style={{ fontSize: "2.4rem", fontWeight: 800, color: "var(--warning)", lineHeight: 1 }}>
-                {rating.average != null ? rating.average.toFixed(1) : "—"}
-              </div>
-              <div style={{ fontSize: "1rem", letterSpacing: 2, marginTop: 4 }}>
-                {[1, 2, 3, 4, 5].map(s2 => (
-                  <span key={s2} style={{ opacity: rating.average != null && s2 <= Math.round(rating.average) ? 1 : 0.25 }}>⭐</span>
-                ))}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: 6 }}>
-                {rating.count} review{rating.count === 1 ? "" : "s"}
-              </div>
-            </div>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 6 }}>⭐ Your rider rating</h3>
-              {rating.count === 0 ? (
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.7 }}>
-                  No reviews yet. Passengers can rate you once a ride you drove is completed.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {reviews.slice(0, 3).map(rv => (
-                    <div key={rv.id} style={{ fontSize: "0.82rem", borderLeft: "2px solid var(--surface-border)", paddingLeft: 10 }}>
-                      <div style={{ color: "var(--warning)" }}>{"⭐".repeat(rv.stars)}</div>
-                      {rv.comment && <div style={{ color: "var(--text-secondary)" }}>&ldquo;{rv.comment}&rdquo;</div>}
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-tertiary)" }}>
-                        {rv.reviewer_name} · {rv.route}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 

@@ -40,19 +40,6 @@ interface RideInfo {
   female_only?: boolean;
   stops?: string[];
   stop_details?: StopInfo[];
-  pending_requests?: number;
-}
-
-// Feature: ride lifecycle — the driver's view of who has asked for a seat.
-interface RidePassenger {
-  id: string;                 // ride_passengers row id — what /accept expects
-  passenger_id: string;       // the user id
-  passenger_name: string;
-  passenger_gender?: string;
-  seats: number;
-  pickup_stop: string;
-  dropoff_stop: string;
-  status: string;
 }
 
 interface MatchResult {
@@ -80,17 +67,6 @@ interface SurgeHour {
   multiplier: number;
   label: string;
   is_current: boolean;
-}
-
-interface CancelQuote {
-  will_be_charged: boolean;
-  penalty: number;
-  exposure: number;
-  dispatched: boolean;
-  role: string;
-  reason: string;
-  ride_status: string;
-  policy: { free_before_dispatch: boolean; penalty_rate: number; min_penalty: number; max_penalty: number };
 }
 
 interface SplitInfo {
@@ -162,14 +138,6 @@ export default function RidesPage() {
   const [joinSeats, setJoinSeats] = useState(1);
 
   const [split, setSplit] = useState<Record<string, SplitInfo>>({});
-  // Feature 18: Ride Cancellation Policy & Penalty
-  const [cancelTarget, setCancelTarget] = useState<RideInfo | null>(null);
-  const [cancelQuote, setCancelQuote] = useState<CancelQuote | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
-  const [cancelling, setCancelling] = useState(false);
-  // Ride lifecycle (accept / start / end)
-  const [manageOpen, setManageOpen] = useState<Record<string, RidePassenger[]>>({});
-  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -360,159 +328,6 @@ export default function RidesPage() {
     }
   };
 
-  // ---- Ride lifecycle: accept a request, start the ride, end the ride ----------
-  // The list endpoint does not carry passengers, so the driver's request panel is
-  // loaded on demand from the ride detail endpoint (same pattern as the splitter).
-  const toggleManage = async (rideId: string) => {
-    if (manageOpen[rideId]) {
-      setManageOpen(prev => {
-        const next = { ...prev };
-        delete next[rideId];
-        return next;
-      });
-      return;
-    }
-    try {
-      const res = await fetch(`${API}/rides/${rideId}`, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setManageOpen(prev => ({ ...prev, [rideId]: data.passengers || [] }));
-      } else {
-        showNotice("error", data.detail || "Could not load the passenger list");
-      }
-    } catch {
-      showNotice("error", "Network error — could not load the passenger list");
-    }
-  };
-
-  const acceptPassenger = async (rideId: string, bookingId: string, name: string) => {
-    setLifecycleBusy(bookingId);
-    try {
-      // NOTE: this endpoint keys off ride_passengers.id (the booking row), not the
-      // passenger's user id — passing the user id 404s.
-      const res = await fetch(`${API}/rides/${rideId}/accept/${bookingId}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showNotice("success", `${name} is confirmed for this ride`);
-        // refresh the open panel so the row flips to "accepted"
-        setManageOpen(prev => {
-          const next = { ...prev };
-          delete next[rideId];
-          return next;
-        });
-        await toggleManage(rideId);
-        reload();
-      } else {
-        showNotice("error", data.detail || "Could not accept that request");
-      }
-    } catch {
-      showNotice("error", "Network error — could not accept that request");
-    } finally {
-      setLifecycleBusy(null);
-    }
-  };
-
-  const startRide = async (rideId: string) => {
-    setLifecycleBusy(rideId);
-    try {
-      const res = await fetch(`${API}/rides/${rideId}/start`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showNotice("success", "Ride started — passengers can now track you live");
-        reload();
-      } else {
-        showNotice("error", data.detail || "Could not start the ride");
-      }
-    } catch {
-      showNotice("error", "Network error — could not start the ride");
-    } finally {
-      setLifecycleBusy(null);
-    }
-  };
-
-  const endRide = async (rideId: string) => {
-    setLifecycleBusy(rideId);
-    try {
-      // Body left empty on purpose: the backend derives the distance from the GPS
-      // tracking session, falling back to the campus zone estimate.
-      const res = await fetch(`${API}/rides/${rideId}/end`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        // The backend settles every passenger's fare on completion, so surface what
-        // was collected — and warn if someone could not cover their share.
-        showNotice(data.unsettled > 0 ? "error" : "success",
-          `${data.message} (${data.distance_km} km)`);
-        reload();
-      } else {
-        showNotice("error", data.detail || "Could not end the ride");
-      }
-    } catch {
-      showNotice("error", "Network error — could not end the ride");
-    } finally {
-      setLifecycleBusy(null);
-    }
-  };
-
-  // Feature 18: fetch the penalty preview BEFORE showing the confirm dialog, so the
-  // warning the student sees is the same number the server will actually charge.
-  const openCancelModal = async (ride: RideInfo) => {
-    setCancelTarget(ride);
-    setCancelQuote(null);
-    setCancelReason("");
-    try {
-      const res = await fetch(`${API}/rides/${ride.id}/cancellation-policy`, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setCancelQuote(data);
-      } else {
-        showNotice("error", data.detail || "Could not check the cancellation policy");
-        setCancelTarget(null);
-      }
-    } catch {
-      showNotice("error", "Network error — could not check the cancellation policy");
-      setCancelTarget(null);
-    }
-  };
-
-  const confirmCancel = async () => {
-    if (!cancelTarget) return;
-    setCancelling(true);
-    try {
-      const res = await fetch(`${API}/rides/${cancelTarget.id}/cancel`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: cancelReason }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showNotice(data.penalty_charged > 0 ? "error" : "success", data.message);
-        setCancelTarget(null);
-        setCancelQuote(null);
-        reload();
-      } else {
-        showNotice("error", data.detail || "Could not cancel the ride");
-      }
-    } catch {
-      showNotice("error", "Network error — could not cancel the ride");
-    } finally {
-      setCancelling(false);
-    }
-  };
-
   const getHotspotName = (idOrName: string) => {
     const found = hotspots.find(h => h.id.toLowerCase() === idOrName.toLowerCase() || h.name.toLowerCase() === idOrName.toLowerCase());
     return found ? found.name : idOrName;
@@ -666,108 +481,7 @@ export default function RidesPage() {
               🗺️ Live Map Tracking
             </Link>
           )}
-          {/* Ride lifecycle — driver-only controls, one per stage of the ride */}
-          {isDriver && ride.status !== "completed" && ride.status !== "cancelled" && (
-            <button className="btn btn-sm btn-secondary" onClick={() => toggleManage(ride.id)}>
-              👥 {manageOpen[ride.id] ? "Hide Requests" : "Manage Requests"}
-              {!manageOpen[ride.id] && !!ride.pending_requests && (
-                <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: "0.68rem" }}>
-                  {ride.pending_requests}
-                </span>
-              )}
-            </button>
-          )}
-          {isDriver && ride.status === "scheduled" && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => startRide(ride.id)}
-              disabled={lifecycleBusy === ride.id}
-            >
-              {lifecycleBusy === ride.id ? <span className="spinner" /> : "▶ Start Ride"}
-            </button>
-          )}
-          {isDriver && ride.status === "active" && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => endRide(ride.id)}
-              disabled={lifecycleBusy === ride.id}
-            >
-              {lifecycleBusy === ride.id ? <span className="spinner" /> : "🏁 End Ride"}
-            </button>
-          )}
-          {/* Feature 18: cancel is only offered while the ride can still be cancelled */}
-          {isParticipant && (ride.status === "scheduled" || ride.status === "active") && (
-            <button className="btn btn-sm btn-danger" onClick={() => openCancelModal(ride)}>
-              ✖ {isDriver ? "Cancel Ride" : "Cancel My Seat"}
-            </button>
-          )}
         </div>
-
-        {/* Ride lifecycle: seat requests awaiting the driver's decision */}
-        {manageOpen[ride.id] && (
-          <div style={{ marginTop: 16, padding: 16, background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--surface-border)" }}>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>👥 Passengers</div>
-
-            {manageOpen[ride.id].length === 0 && (
-              <div style={{ fontSize: "0.85rem", color: "var(--text-tertiary)" }}>
-                Nobody has requested a seat on this ride yet.
-              </div>
-            )}
-
-            {manageOpen[ride.id].map(pp => (
-              <div
-                key={pp.id}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  gap: 10, padding: "8px 0", flexWrap: "wrap",
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <div style={{ minWidth: 170 }}>
-                  <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
-                    {pp.passenger_name}
-                    {pp.seats > 1 && (
-                      <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}> · {pp.seats} seats</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: "0.74rem", color: "var(--text-tertiary)" }}>
-                    {getHotspotName(pp.pickup_stop)} ➜ {getHotspotName(pp.dropoff_stop)}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    className={`badge ${
-                      pp.status === "accepted" || pp.status === "completed"
-                        ? "badge-success"
-                        : pp.status === "cancelled"
-                        ? "badge-danger"
-                        : "badge-warning"
-                    }`}
-                    style={{ fontSize: "0.68rem" }}
-                  >
-                    {pp.status}
-                  </span>
-                  {pp.status === "requested" && (
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => acceptPassenger(ride.id, pp.id, pp.passenger_name)}
-                      disabled={lifecycleBusy === pp.id}
-                    >
-                      {lifecycleBusy === pp.id ? <span className="spinner" /> : "✓ Accept"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {ride.status === "scheduled" && manageOpen[ride.id].some(pp => pp.status === "requested") && (
-              <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: 10 }}>
-                Accept a passenger before starting — only accepted riders are counted in the fare split.
-              </div>
-            )}
-          </div>
-        )}
 
         {s && (
           <div style={{ marginTop: 16, padding: 16, background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--surface-border)" }}>
@@ -1360,82 +1074,6 @@ export default function RidesPage() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Feature 18: Ride Cancellation Policy & Penalty — confirm dialog */}
-      {cancelTarget && (
-        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">
-              {cancelQuote?.role === "driver" ? "Cancel this ride?" : "Cancel your seat?"}
-            </div>
-            <div className="modal-text">
-              {getHotspotName(cancelTarget.source)} ➜ {getHotspotName(cancelTarget.destination)}
-            </div>
-
-            {!cancelQuote && (
-              <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
-                <span className="spinner" />
-              </div>
-            )}
-
-            {cancelQuote && (
-              <>
-                <div
-                  style={{
-                    padding: 16,
-                    borderRadius: "var(--radius-md)",
-                    marginBottom: 18,
-                    background: cancelQuote.will_be_charged ? "rgba(255,59,92,0.12)" : "rgba(16,185,129,0.12)",
-                    border: `1px solid ${cancelQuote.will_be_charged ? "rgba(255,59,92,0.35)" : "rgba(16,185,129,0.35)"}`,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontSize: "1.3rem" }}>{cancelQuote.will_be_charged ? "⚠️" : "✅"}</span>
-                    <span style={{ fontWeight: 700, color: cancelQuote.will_be_charged ? "var(--danger)" : "var(--success)" }}>
-                      {cancelQuote.will_be_charged
-                        ? `Late cancellation — ৳${cancelQuote.penalty.toFixed(2)} fee`
-                        : "Free cancellation"}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "0.84rem", color: "var(--text-secondary)", lineHeight: 1.65 }}>
-                    {cancelQuote.reason}
-                  </div>
-                </div>
-
-                <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginBottom: 16, lineHeight: 1.7 }}>
-                  <strong>Policy:</strong> cancelling before the driver starts the ride is always free.
-                  After that a {Math.round(cancelQuote.policy.penalty_rate * 100)}% fee applies
-                  (minimum ৳{cancelQuote.policy.min_penalty.toFixed(0)}, maximum ৳{cancelQuote.policy.max_penalty.toFixed(0)}),
-                  charged to your wallet.
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">Reason (optional)</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. class got cancelled"
-                    value={cancelReason}
-                    onChange={e => setCancelReason(e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-actions">
-                  <button className="btn btn-ghost" onClick={() => setCancelTarget(null)}>
-                    Keep my booking
-                  </button>
-                  <button className="btn btn-danger" onClick={confirmCancel} disabled={cancelling}>
-                    {cancelling ? <span className="spinner" /> : (
-                      cancelQuote.will_be_charged
-                        ? `Cancel & pay ৳${cancelQuote.penalty.toFixed(2)}`
-                        : "Cancel for free"
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}

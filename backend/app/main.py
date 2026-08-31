@@ -20,11 +20,15 @@ from app.routes.surge import router as surge_router
 from app.routes.chat import router as chat_router
 from app.routes.eco import router as eco_router
 
-# Sprint 4/5 completion: Wallet (#9), History & Receipts (#10), Earnings (#16), Reviews (#7)
+# Feature 9: Wallet & bKash Integration
 from app.routes.wallet import router as wallet_router
-from app.routes.history import router as history_router
+from app.routes.bkash_checkout import router as bkash_checkout_router
+
+# Feature 16: Driver Earnings Dashboard
 from app.routes.earnings import router as earnings_router
-from app.routes.reviews import router as reviews_router
+
+# Feature 10: Ride History & Receipt Log
+from app.routes.history import router as history_router
 
 # Initialize database on startup
 init_db()
@@ -63,11 +67,16 @@ app.include_router(surge_router, prefix="/api/surge", tags=["Peak Hour Surge"])
 app.include_router(chat_router, prefix="/ws", tags=["Ride Chat"])
 app.include_router(eco_router, prefix="/api/eco", tags=["Eco Tracker"])
 
-# Payments, history and reputation
+# Wallet (Feature 9)
 app.include_router(wallet_router, prefix="/api/wallet", tags=["Wallet & bKash"])
-app.include_router(history_router, prefix="/api/history", tags=["Ride History & Receipts"])
 app.include_router(earnings_router, prefix="/api/earnings", tags=["Driver Earnings"])
-app.include_router(reviews_router, prefix="/api/reviews", tags=["Ratings & Reviews"])
+app.include_router(history_router, prefix="/api/history", tags=["Ride History & Receipts"])
+
+# The SIMULATED bKash gateway page. Mounted only in demo mode — in production the
+# browser would be redirected to bKash's own hosted checkout instead. Deliberately
+# not under /api and deliberately unauthenticated: it stands in for a third party.
+if os.getenv("DEMO_MODE", "1") == "1":
+    app.include_router(bkash_checkout_router, prefix="/bkash", tags=["bKash (simulated)"])
 
 
 @app.get("/api/health")

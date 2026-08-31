@@ -6,6 +6,3 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 aiofiles==24.1.0
 pydantic==2.9.2
-# Windows ships no system tz database, so zoneinfo.ZoneInfo("Asia/Dhaka") in
-# surge.py raises ZoneInfoNotFoundError without this. No-op on Linux/macOS.
-tzdata==2025.2

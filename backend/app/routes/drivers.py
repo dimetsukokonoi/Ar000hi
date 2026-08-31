@@ -8,7 +8,6 @@ import shutil
 from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File, Form
 from app.database import get_db
 from app.auth import get_current_user_id, require_admin
-from app.routes.reviews import rating_for
 
 router = APIRouter()
 
@@ -113,21 +112,13 @@ def get_driver_status(user_id: str = Depends(get_current_user_id)):
     profile = conn.execute(
         "SELECT * FROM driver_profiles WHERE user_id = ?", (user_id,)
     ).fetchone()
-
-    # Feature 7: the driver's public star rating belongs on their profile. Read it
-    # BEFORE the not-submitted early return — ratings come from completed rides, which
-    # a user can have without ever having filed vehicle documents.
-    rating = rating_for(conn, user_id)
+    conn.close()
 
     if not profile:
-        conn.close()
-        return {"status": "not_submitted", "profile": None, "rating": rating}
-
-    conn.close()
+        return {"status": "not_submitted", "profile": None}
 
     return {
         "status": profile["verification_status"],
-        "rating": rating,
         "profile": {
             "id": profile["id"],
             "vehicle_type": profile["vehicle_type"],

@@ -177,42 +177,6 @@ def init_db():
             label TEXT NOT NULL
         );
 
-        -- Feature 9: Wallet & bKash (mock). One wallet row per user; every balance
-        -- change is an append-only transaction so the ledger is auditable and the
-        -- balance can always be re-derived from history.
-        CREATE TABLE IF NOT EXISTS wallets (
-            user_id TEXT PRIMARY KEY REFERENCES users(id),
-            balance REAL NOT NULL DEFAULT 0.0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS wallet_transactions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL REFERENCES users(id),
-            kind TEXT NOT NULL
-                CHECK(kind IN ('topup', 'fare', 'payout', 'penalty', 'refund')),
-            amount REAL NOT NULL,          -- signed: positive = credit, negative = debit
-            balance_after REAL NOT NULL,
-            ride_id TEXT,
-            method TEXT NOT NULL DEFAULT 'mock',
-            reference TEXT NOT NULL DEFAULT '',
-            note TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        -- Feature 7: Driver Rating & Review. UNIQUE(ride, reviewer, reviewee)
-        -- enforces one review per person per ride at the DB level.
-        CREATE TABLE IF NOT EXISTS reviews (
-            id TEXT PRIMARY KEY,
-            ride_id TEXT NOT NULL REFERENCES rides(id),
-            reviewer_id TEXT NOT NULL REFERENCES users(id),
-            reviewee_id TEXT NOT NULL REFERENCES users(id),
-            stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
-            comment TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE(ride_id, reviewer_id, reviewee_id)
-        );
-
         -- Ornab (Feature 12): persisted record of every auto-share so the
         -- "share to trusted contacts" action is auditable, not just console-logged.
         CREATE TABLE IF NOT EXISTS contact_shares (
@@ -221,6 +185,57 @@ def init_db():
             share_url TEXT NOT NULL,
             session_id TEXT,
             contact_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Feature 9: Wallet & bKash Integration -------------------------------
+        -- Prepaid wallet model: the gateway is touched only at the edges
+        -- (top-up in, cash-out out). Ride settlement is an internal transfer.
+
+        -- One wallet per user. `balance` is a cached total; the append-only
+        -- `transactions` ledger is the source of truth. GET /api/wallet/reconcile
+        -- asserts the two agree.
+        CREATE TABLE IF NOT EXISTS wallets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT UNIQUE NOT NULL REFERENCES users(id),
+            balance REAL NOT NULL DEFAULT 0.0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Append-only ledger. NEVER updated or deleted: a correction is a new
+        -- opposing row. `amount` is signed from the wallet owner's point of view
+        -- (credit > 0, debit < 0), so balance == SUM(amount).
+        CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            kind TEXT NOT NULL
+                CHECK(kind IN ('topup', 'ride_debit', 'ride_credit',
+                               'withdrawal', 'refund', 'commission')),
+            amount REAL NOT NULL,
+            platform_fee REAL NOT NULL DEFAULT 0.0,
+            balance_after REAL NOT NULL,
+            ride_id TEXT REFERENCES rides(id),
+            payment_id TEXT,
+            counterparty_id TEXT REFERENCES users(id),
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- One row per bKash checkout attempt. Mirrors the real tokenized-checkout
+        -- lifecycle so swapping in the live gateway needs no schema change.
+        CREATE TABLE IF NOT EXISTS bkash_payments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            amount REAL NOT NULL,
+            intent TEXT NOT NULL DEFAULT 'topup'
+                CHECK(intent IN ('topup', 'withdrawal')),
+            status TEXT NOT NULL DEFAULT 'created'
+                CHECK(status IN ('created', 'authorized', 'completed',
+                                 'failed', 'cancelled', 'timeout')),
+            trx_id TEXT,
+            wallet_number TEXT DEFAULT '',
+            failure_reason TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
     """)
@@ -237,13 +252,6 @@ def init_db():
     # Multi-stop live progress tracking
     _ensure_column(conn, "ride_stops", "status", "TEXT NOT NULL DEFAULT 'pending'")
 
-    # Feature 18: Ride Cancellation Policy & Penalty.
-    _ensure_column(conn, "rides", "cancelled_at", "TEXT")
-    _ensure_column(conn, "rides", "cancelled_by", "TEXT")
-    _ensure_column(conn, "rides", "cancel_reason", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(conn, "ride_passengers", "cancelled_at", "TEXT")
-    _ensure_column(conn, "ride_passengers", "penalty_amount", "REAL NOT NULL DEFAULT 0")
-
     # SQLite hardening: WAL journal + indexes on the hot foreign keys.
     # (matches PROJECT_PLAN.md §6.3)
     conn.execute("PRAGMA journal_mode = WAL")
@@ -256,11 +264,15 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_trusted_contacts_user ON trusted_contacts(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_contact_shares_user ON contact_shares(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_wallet_tx_ride ON wallet_transactions(ride_id)",
-        "CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id)",
-        "CREATE INDEX IF NOT EXISTS idx_reviews_ride ON reviews(ride_id)",
-        "CREATE INDEX IF NOT EXISTS idx_rides_driver_status ON rides(driver_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_ride ON transactions(ride_id)",
+        "CREATE INDEX IF NOT EXISTS idx_bkash_payments_user ON bkash_payments(user_id)",
+        # Idempotency guards: a ride can only ever settle once per user+kind, and a
+        # bKash trxID can only ever be credited once (protects against double-clicks
+        # and gateway callback retries).
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_ride_leg ON transactions(ride_id, user_id, kind) WHERE ride_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_payment ON transactions(payment_id) WHERE payment_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_bkash_trx ON bkash_payments(trx_id) WHERE trx_id IS NOT NULL",
     ):
         conn.execute(idx_sql)
     conn.commit()

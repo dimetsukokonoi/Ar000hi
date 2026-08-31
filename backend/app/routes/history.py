@@ -1,237 +1,264 @@
 """
-Arooohi Backend — Ride History & Receipt Routes
-Feature 10: Ride History & Receipt Log
+Arooohi Backend — Ride History & Receipt Log
+Feature 10: Past trips list + downloadable receipt
 
-History is a read-only projection over rides the user already took part in, as
-driver or as passenger. Nothing new is stored: a "past trip" is any ride of theirs
-in a terminal state (`completed` or `cancelled`).
+Covers BOTH roles. #16 Driver Earnings answers "what did I earn"; this answers
+"where have I been and what did it cost me", for riders and drivers alike.
 
-The receipt reuses the Feature 5 splitter helper (`_split_total`) rather than
-recomputing shares, so a receipt can never disagree with the live fare split shown
-during the ride.
+Amounts follow the same rule as the rest of the payments stack: the ledger is the
+truth. A settled ride reports the actual `ride_debit` / `ride_credit` row; a ride
+that never settled reports what was *owed* and is flagged unpaid, rather than
+quietly showing zero or pretending it was paid.
+
+No new schema (PROJECT_PLAN.md §4) — this reads `rides`, `ride_passengers`,
+`ride_stops` and `transactions`.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from app.database import get_db
+from datetime import datetime as dt
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app import wallet_service as ws
 from app.auth import get_current_user_id
-from app.routes.rides import _split_total
+from app.database import get_db
 
 router = APIRouter()
 
-TERMINAL_STATES = ("completed", "cancelled")
+BD_TZ = ZoneInfo("Asia/Dhaka")
+RECEIPT_PREFIX = "ARH"
 
 
-def _passenger_share(conn, ride, user_id: str):
-    """What this passenger owed for the ride: their seats' slice of the total.
-    Returns (share, seats, total_seats) or (None, 0, ...) if they were not on board."""
-    accepted = conn.execute(
-        """SELECT passenger_id, seats FROM ride_passengers
-           WHERE ride_id = ? AND status IN ('accepted', 'completed')
-           ORDER BY created_at ASC""",
-        (ride["id"],)
-    ).fetchall()
-
-    weights = [max(int(r["seats"]), 1) for r in accepted]
-    total_seats = sum(weights)
-    if total_seats == 0:
-        return None, 0, 0
-
-    total = round(ride["base_fare"] * ride["surge_multiplier"], 2)
-    shares = _split_total(total, total_seats)
-
-    idx = 0
-    for r, w in zip(accepted, weights):
-        if r["passenger_id"] == user_id:
-            return round(sum(shares[idx:idx + w]), 2), w, total_seats
-        idx += w
-    return None, 0, total_seats
-
-
-def _penalty_for(conn, user_id: str, ride_id: str) -> float:
-    """Total cancellation penalty this user paid on this ride (positive number)."""
-    row = conn.execute(
-        """SELECT COALESCE(SUM(-amount), 0) AS p FROM wallet_transactions
-           WHERE user_id = ? AND ride_id = ? AND kind = 'penalty'""",
-        (user_id, ride_id)
+def _ledger_for(conn, ride_id: str, user_id: str):
+    """The wallet row this ride produced for this user, if it settled."""
+    return conn.execute(
+        """SELECT id, kind, amount, platform_fee, created_at
+           FROM transactions
+           WHERE ride_id = ? AND user_id = ? AND kind IN ('ride_debit', 'ride_credit')
+           LIMIT 1""",
+        (ride_id, user_id),
     ).fetchone()
-    return round(row["p"], 2)
+
+
+def _receipt_no(ride_id: str, ended_at: str | None) -> str:
+    """Stable, human-quotable receipt number. Same ride always yields the same one."""
+    stamp = (ended_at or "")[:10].replace("-", "") or "00000000"
+    return f"{RECEIPT_PREFIX}-{stamp}-{ride_id[:6].upper()}"
+
+
+def _when(ride) -> str | None:
+    return ride["ended_at"] or ride["scheduled_at"] or ride["created_at"]
 
 
 @router.get("")
-def ride_history(role: str = "all", user_id: str = Depends(get_current_user_id)):
-    """Past trips (newest first). `role` filters to 'driver' | 'passenger' | 'all'."""
-    if role not in ("all", "driver", "passenger"):
-        raise HTTPException(status_code=400, detail="role must be all, driver, or passenger")
-
+def list_history(
+    role: str = Query("all", pattern="^(all|driver|passenger)$"),
+    status: str = Query("completed", pattern="^(completed|all)$"),
+    limit: int = Query(50, ge=1, le=200),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Past trips, newest first, across both roles."""
     conn = get_db()
-    placeholders = ",".join("?" * len(TERMINAL_STATES))
-    # A ride is "past" for this user when EITHER the ride itself reached a terminal
-    # state (they drove it, or rode it to the end), OR their own seat is cancelled.
-    # The second arm matters because a passenger dropping out of a still-running
-    # ride leaves `rides.status = 'active'` — without it, a trip they cancelled and
-    # were charged a penalty for would never appear in their history.
-    rides = conn.execute(
-        f"""SELECT r.*, u.name AS driver_name
-            FROM rides r JOIN users u ON r.driver_id = u.id
-            WHERE (r.status IN ({placeholders})
-                   AND (r.driver_id = ?
-                        OR r.id IN (SELECT ride_id FROM ride_passengers
-                                    WHERE passenger_id = ? AND status != 'requested')))
-               OR r.id IN (SELECT ride_id FROM ride_passengers
-                           WHERE passenger_id = ? AND status = 'cancelled')
-            ORDER BY COALESCE(r.ended_at, r.cancelled_at, r.created_at) DESC""",
-        (*TERMINAL_STATES, user_id, user_id, user_id)
-    ).fetchall()
-
+    status_sql = "" if status == "all" else " AND r.status = 'completed'"
     trips = []
-    for r in rides:
-        as_driver = r["driver_id"] == user_id
-        seat_row = conn.execute(
-            """SELECT seats, status, penalty_amount FROM ride_passengers
-               WHERE ride_id = ? AND passenger_id = ?""",
-            (r["id"], user_id)
-        ).fetchone()
 
-        # Report the outcome from THIS user's point of view: a passenger who
-        # cancelled sees "cancelled" even if the ride itself ran to completion.
-        if not as_driver and seat_row and seat_row["status"] == "cancelled":
-            outcome = "cancelled"
-        else:
-            outcome = r["status"]
+    if role in ("all", "driver"):
+        rows = conn.execute(
+            f"""SELECT r.*, (SELECT COUNT(*) FROM ride_passengers rp
+                             WHERE rp.ride_id = r.id
+                               AND rp.status IN ('accepted','completed')) AS pax
+                FROM rides r
+                WHERE r.driver_id = ?{status_sql}""",
+            (user_id,),
+        ).fetchall()
+        for r in rows:
+            led = _ledger_for(conn, r["id"], user_id)
+            trips.append({
+                "ride_id": r["id"],
+                "role": "driver",
+                "source": r["source"],
+                "destination": r["destination"],
+                "status": r["status"],
+                "when": _when(r),
+                "distance_km": r["distance_km"],
+                "passengers": r["pax"],
+                "counterparty": f"{r['pax']} passenger" + ("" if r["pax"] == 1 else "s"),
+                "amount": round(led["amount"], 2) if led else 0.0,
+                "settled": led is not None,
+                "female_only": bool(r["female_only"]),
+                "receipt_no": _receipt_no(r["id"], _when(r)),
+            })
 
-        total = round(r["base_fare"] * r["surge_multiplier"], 2)
-        if as_driver:
-            amount = total
-        elif outcome == "cancelled":
-            amount = 0.0   # a cancelled seat owes no fare, only the penalty below
-        else:
-            amount, _seats, _total_seats = _passenger_share(conn, r, user_id)
-
-        trips.append({
-            "ride_id": r["id"],
-            "role": "driver" if as_driver else "passenger",
-            "source": r["source"],
-            "destination": r["destination"],
-            "status": outcome,
-            "driver_name": r["driver_name"],
-            "distance_km": r["distance_km"],
-            "base_fare": r["base_fare"],
-            "surge_multiplier": r["surge_multiplier"],
-            "ride_total": total,
-            "amount": amount,
-            "seats": seat_row["seats"] if seat_row else None,
-            "penalty_paid": _penalty_for(conn, user_id, r["id"]),
-            "scheduled_at": r["scheduled_at"],
-            "started_at": r["started_at"],
-            "ended_at": r["ended_at"],
-            "cancelled_at": r["cancelled_at"],
-            "created_at": r["created_at"],
-        })
+    if role in ("all", "passenger"):
+        rows = conn.execute(
+            f"""SELECT r.*, rp.seats, rp.pickup_stop, rp.dropoff_stop,
+                       rp.status AS my_status, u.name AS driver_name
+                FROM ride_passengers rp
+                JOIN rides r ON r.id = rp.ride_id
+                JOIN users u ON u.id = r.driver_id
+                WHERE rp.passenger_id = ?
+                  AND rp.status IN ('accepted','completed'){status_sql}""",
+            (user_id,),
+        ).fetchall()
+        for r in rows:
+            led = _ledger_for(conn, r["id"], user_id)
+            if led:
+                amount = round(abs(led["amount"]), 2)
+            else:
+                shares = ws.ride_shares(conn, r)
+                mine = next((s for s in shares if s["passenger_id"] == user_id), None)
+                amount = mine["share"] if mine else 0.0
+            trips.append({
+                "ride_id": r["id"],
+                "role": "passenger",
+                "source": r["pickup_stop"] or r["source"],
+                "destination": r["dropoff_stop"] or r["destination"],
+                "status": r["status"],
+                "when": _when(r),
+                "distance_km": r["distance_km"],
+                "passengers": r["seats"],
+                "counterparty": r["driver_name"],
+                "amount": amount,
+                "settled": led is not None,
+                "female_only": bool(r["female_only"]),
+                "receipt_no": _receipt_no(r["id"], _when(r)),
+            })
 
     conn.close()
+    trips.sort(key=lambda t: t["when"] or "", reverse=True)
+    return trips[:limit]
 
-    if role != "all":
-        trips = [t for t in trips if t["role"] == role]
 
-    completed = [t for t in trips if t["status"] == "completed"]
+@router.get("/summary")
+def history_summary(user_id: str = Depends(get_current_user_id)):
+    """Lifetime totals across both roles — spent as a rider, earned as a driver."""
+    conn = get_db()
+    spent = conn.execute(
+        """SELECT COALESCE(SUM(ABS(amount)), 0) AS s, COUNT(*) AS n
+           FROM transactions WHERE user_id = ? AND kind = 'ride_debit'""",
+        (user_id,),
+    ).fetchone()
+    earned = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS s, COUNT(*) AS n
+           FROM transactions WHERE user_id = ? AND kind = 'ride_credit'""",
+        (user_id,),
+    ).fetchone()
+    as_driver = conn.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(distance_km), 0) AS km FROM rides WHERE driver_id = ? AND status = 'completed'",
+        (user_id,),
+    ).fetchone()
+    as_passenger = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(r.distance_km), 0) AS km
+           FROM ride_passengers rp JOIN rides r ON r.id = rp.ride_id
+           WHERE rp.passenger_id = ? AND r.status = 'completed'
+             AND rp.status IN ('accepted','completed')""",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+
     return {
-        "trips": trips,
-        "summary": {
-            "total_trips": len(trips),
-            "completed": len(completed),
-            "cancelled": len(trips) - len(completed),
-            "as_driver": sum(1 for t in trips if t["role"] == "driver"),
-            "as_passenger": sum(1 for t in trips if t["role"] == "passenger"),
-            "total_km": round(sum(t["distance_km"] or 0 for t in completed), 2),
-            "total_spent": round(
-                sum(t["amount"] or 0 for t in completed if t["role"] == "passenger"), 2
-            ),
-            "total_penalties": round(sum(t["penalty_paid"] for t in trips), 2),
-        },
+        "trips_as_driver": as_driver["n"],
+        "trips_as_passenger": as_passenger["n"],
+        "total_trips": as_driver["n"] + as_passenger["n"],
+        "total_spent": round(spent["s"], 2),
+        "total_earned": round(earned["s"], 2),
+        "net": round(earned["s"] - spent["s"], 2),
+        "distance_km": round(as_driver["km"] + as_passenger["km"], 2),
     }
 
 
 @router.get("/{ride_id}/receipt")
-def ride_receipt(ride_id: str, user_id: str = Depends(get_current_user_id)):
-    """Printable receipt for one past trip. Participants only."""
+def get_receipt(ride_id: str, user_id: str = Depends(get_current_user_id)):
+    """Full receipt for one ride. Participants only."""
     conn = get_db()
-    ride = conn.execute(
-        """SELECT r.*, u.name AS driver_name, u.bracu_email AS driver_email
-           FROM rides r JOIN users u ON r.driver_id = u.id WHERE r.id = ?""",
-        (ride_id,)
-    ).fetchone()
+    ride = conn.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
     if not ride:
         conn.close()
         raise HTTPException(status_code=404, detail="Ride not found")
 
-    as_driver = ride["driver_id"] == user_id
-    seat_row = conn.execute(
-        """SELECT seats, status FROM ride_passengers
-           WHERE ride_id = ? AND passenger_id = ? AND status != 'requested'""",
-        (ride_id, user_id)
+    # A receipt documents a COMPLETED trip. Serving one for a scheduled or active
+    # ride produces a document that looks like proof of payment for a trip that
+    # has not happened.
+    if ride["status"] != "completed":
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=(f"This ride is {ride['status']}, not completed. "
+                    "A receipt is issued once the trip finishes."),
+        )
+
+    is_driver = ride["driver_id"] == user_id
+    mine = conn.execute(
+        """SELECT * FROM ride_passengers
+           WHERE ride_id = ? AND passenger_id = ? AND status IN ('accepted','completed')""",
+        (ride_id, user_id),
     ).fetchone()
-    if not as_driver and not seat_row:
+    if not is_driver and not mine:
         conn.close()
         raise HTTPException(status_code=403, detail="Only ride participants can view this receipt")
 
-    # A cancelled seat is terminal for THIS user even while the ride runs on —
-    # they may have been charged a penalty and are entitled to the receipt for it.
-    seat_cancelled = bool(seat_row) and seat_row["status"] == "cancelled"
-    if ride["status"] not in TERMINAL_STATES and not seat_cancelled:
-        conn.close()
-        raise HTTPException(
-            status_code=400, detail="A receipt is only available once the ride has ended"
-        )
+    driver = conn.execute("SELECT name, bracu_email FROM users WHERE id = ?", (ride["driver_id"],)).fetchone()
+    stops = conn.execute(
+        "SELECT sequence, place, status FROM ride_stops WHERE ride_id = ? ORDER BY sequence ASC",
+        (ride_id,),
+    ).fetchall()
 
-    me = conn.execute("SELECT name, bracu_email FROM users WHERE id = ?", (user_id,)).fetchone()
-
-    lines = []
+    # Same numbers the cost splitter shows — one shared implementation.
+    shares = ws.ride_shares(conn, ride)
     total = round(ride["base_fare"] * ride["surge_multiplier"], 2)
-    if as_driver:
-        amount = total
-        lines.append({"label": "Ride total collected", "amount": total})
-    elif seat_cancelled:
-        amount = 0.0
-        lines.append({"label": "Cancelled booking — no fare charged", "amount": 0.0})
-    else:
-        share, seats, total_seats = _passenger_share(conn, ride, user_id)
-        amount = share or 0.0
-        base_label = "Base fare (BDT {:.2f})".format(ride["base_fare"])
-        lines.append({"label": base_label, "amount": ride["base_fare"]})
-        if ride["surge_multiplier"] > 1:
-            lines.append({
-                "label": "Peak-hour surge x{}".format(ride["surge_multiplier"]),
-                "amount": round(total - ride["base_fare"], 2),
-            })
-        lines.append({
-            "label": "Your share ({} of {} seats)".format(seats, total_seats),
-            "amount": amount,
-        })
-
-    penalty = _penalty_for(conn, user_id, ride_id)
-    if penalty:
-        lines.append({"label": "Late cancellation penalty", "amount": penalty})
-
+    led = _ledger_for(conn, ride_id, user_id)
     conn.close()
 
+    if is_driver:
+        your_amount = round(led["amount"], 2) if led else 0.0
+        expected = round(sum(s["share"] for s in shares), 2)
+        line = "Fare received from passengers"
+    else:
+        mine_share = next((s for s in shares if s["passenger_id"] == user_id), None)
+        expected = mine_share["share"] if mine_share else 0.0
+        your_amount = round(abs(led["amount"]), 2) if led else 0.0
+        line = "Your share of the fare"
+
+    # `paid` alone is not enough: a driver can be credited for SOME passengers and
+    # not others, which is neither fully paid nor fully unpaid.
+    shortfall = round(max(expected - your_amount, 0.0), 2) if led else 0.0
+    fully_paid = led is not None and shortfall <= 0.005
+
     return {
-        "receipt_no": "ARH-{}".format(ride_id[:8].upper()),
-        "issued_to": {"name": me["name"], "email": me["bracu_email"]},
-        "role": "driver" if as_driver else "passenger",
-        "ride": {
-            "ride_id": ride_id,
+        "receipt_no": _receipt_no(ride_id, _when(ride)),
+        "issued_at": dt.now(BD_TZ).isoformat(),
+        "ride_id": ride_id,
+        "role": "driver" if is_driver else "passenger",
+        "status": ride["status"],
+        "paid": led is not None,
+        "fully_paid": fully_paid,
+        "shortfall": shortfall,
+        "payment_method": ("Arooohi Wallet (bKash)" if fully_paid
+                           else "Arooohi Wallet (bKash) — partially settled" if led
+                           else "Unsettled"),
+        "transaction_id": led["id"] if led else None,
+        "paid_at": led["created_at"] if led else None,
+        "driver_name": driver["name"] if driver else "Unknown",
+        "route": {
             "source": ride["source"],
             "destination": ride["destination"],
-            "status": ride["status"],
-            "driver_name": ride["driver_name"],
-            "distance_km": ride["distance_km"],
-            "base_fare": ride["base_fare"],
-            "surge_multiplier": ride["surge_multiplier"],
-            "ride_total": total,
-            "started_at": ride["started_at"],
-            "ended_at": ride["ended_at"],
-            "cancelled_at": ride["cancelled_at"],
+            "pickup_stop": (mine["pickup_stop"] if mine else None) or ride["source"],
+            "dropoff_stop": (mine["dropoff_stop"] if mine else None) or ride["destination"],
+            "stops": [{"sequence": s["sequence"], "place": s["place"], "status": s["status"]} for s in stops],
         },
-        "lines": lines,
-        "amount_due": round(amount + penalty, 2),
-        "currency": "BDT",
+        "when": _when(ride),
+        "started_at": ride["started_at"],
+        "ended_at": ride["ended_at"],
+        "distance_km": ride["distance_km"],
+        "female_only": bool(ride["female_only"]),
+        "fare": {
+            "base_fare": round(ride["base_fare"], 2),
+            "surge_multiplier": ride["surge_multiplier"],
+            "total": total,
+            "seats": (mine["seats"] if mine else None),
+            "platform_fee": round(led["platform_fee"], 2) if led else 0.0,
+        },
+        "your_line_label": line,
+        "your_amount": your_amount,
+        "expected_amount": expected,
+        "breakdown": shares,
     }
