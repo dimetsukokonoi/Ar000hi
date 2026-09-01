@@ -27,6 +27,50 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) 
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
+def _allow_penalty_kind(conn: sqlite3.Connection) -> None:
+    """Add 'penalty' to transactions.kind on databases created before Feature 18.
+
+    SQLite cannot ALTER a CHECK constraint, so the table has to be rebuilt. This
+    is money data, so it is done inside one transaction and only when the current
+    constraint is actually missing the value.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'"
+    ).fetchone()
+    if not row or "'penalty'" in row[0]:
+        return   # fresh database, or already migrated
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript("""
+        BEGIN;
+        CREATE TABLE transactions_new (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            kind TEXT NOT NULL
+                CHECK(kind IN ('topup', 'ride_debit', 'ride_credit',
+                               'withdrawal', 'refund', 'commission', 'penalty')),
+            amount REAL NOT NULL,
+            platform_fee REAL NOT NULL DEFAULT 0.0,
+            balance_after REAL NOT NULL,
+            ride_id TEXT REFERENCES rides(id),
+            payment_id TEXT,
+            counterparty_id TEXT REFERENCES users(id),
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO transactions_new
+            (id, user_id, kind, amount, platform_fee, balance_after, ride_id,
+             payment_id, counterparty_id, note, created_at)
+        SELECT id, user_id, kind, amount, platform_fee, balance_after, ride_id,
+               payment_id, counterparty_id, note, created_at FROM transactions;
+        DROP TABLE transactions;
+        ALTER TABLE transactions_new RENAME TO transactions;
+        COMMIT;
+    """)
+    conn.execute("PRAGMA foreign_keys = ON")
+    print("[OK] migrated transactions.kind to allow 'penalty'")
+
+
 def init_db():
     """Create all tables if they don't exist."""
     conn = get_db()
@@ -188,6 +232,20 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        -- Feature 7: Driver Rating & Review
+        -- UNIQUE(ride_id, reviewer_id, reviewee_id) is the whole anti-abuse story:
+        -- one review per person, per ride, per target. No edits, no re-rating.
+        CREATE TABLE IF NOT EXISTS reviews (
+            id TEXT PRIMARY KEY,
+            ride_id TEXT NOT NULL REFERENCES rides(id),
+            reviewer_id TEXT NOT NULL REFERENCES users(id),
+            reviewee_id TEXT NOT NULL REFERENCES users(id),
+            stars INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
+            comment TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(ride_id, reviewer_id, reviewee_id)
+        );
+
         -- Feature 9: Wallet & bKash Integration -------------------------------
         -- Prepaid wallet model: the gateway is touched only at the edges
         -- (top-up in, cash-out out). Ride settlement is an internal transfer.
@@ -211,7 +269,7 @@ def init_db():
             user_id TEXT NOT NULL REFERENCES users(id),
             kind TEXT NOT NULL
                 CHECK(kind IN ('topup', 'ride_debit', 'ride_credit',
-                               'withdrawal', 'refund', 'commission')),
+                               'withdrawal', 'refund', 'commission', 'penalty')),
             amount REAL NOT NULL,
             platform_fee REAL NOT NULL DEFAULT 0.0,
             balance_after REAL NOT NULL,
@@ -251,6 +309,13 @@ def init_db():
     _ensure_column(conn, "ride_passengers", "dropoff_stop", "TEXT DEFAULT ''")
     # Multi-stop live progress tracking
     _ensure_column(conn, "ride_stops", "status", "TEXT NOT NULL DEFAULT 'pending'")
+    # Feature 18: cancellation bookkeeping
+    _ensure_column(conn, "rides", "cancelled_at", "TEXT")
+    _ensure_column(conn, "rides", "cancelled_by", "TEXT")
+    _ensure_column(conn, "rides", "cancel_reason", "TEXT DEFAULT ''")
+    _ensure_column(conn, "ride_passengers", "cancelled_at", "TEXT")
+    _ensure_column(conn, "ride_passengers", "penalty_amount", "REAL NOT NULL DEFAULT 0")
+    _allow_penalty_kind(conn)
 
     # SQLite hardening: WAL journal + indexes on the hot foreign keys.
     # (matches PROJECT_PLAN.md §6.3)
@@ -264,6 +329,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_trusted_contacts_user ON trusted_contacts(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_contact_shares_user ON contact_shares(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id)",
+        "CREATE INDEX IF NOT EXISTS idx_reviews_ride ON reviews(ride_id)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_ride ON transactions(ride_id)",
         "CREATE INDEX IF NOT EXISTS idx_bkash_payments_user ON bkash_payments(user_id)",

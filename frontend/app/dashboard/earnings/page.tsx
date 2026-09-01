@@ -49,6 +49,14 @@ interface Summary {
   week_starting: string;
 }
 
+// Feature 7: the driver's own star rating, shown on their earnings profile.
+interface MyRating {
+  average: number | null;
+  count: number;
+  histogram: Record<string, number>;
+  reviews: { id: string; stars: number; comment: string; reviewer_name: string; route: string }[];
+}
+
 interface Bucket {
   period_start: string;
   label: string;
@@ -103,6 +111,7 @@ export default function EarningsPage() {
   const [daily, setDaily] = useState<Series>({ buckets: [], max: 0, total: 0 });
   const [period, setPeriod] = useState<Period>("week");
   const [rides, setRides] = useState<RideRow[]>([]);
+  const [myRating, setMyRating] = useState<MyRating | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [asTable, setAsTable] = useState(false);
   const [error, setError] = useState("");
@@ -114,11 +123,12 @@ export default function EarningsPage() {
   );
 
   const fetchAll = useCallback(async () => {
-    const [s, w, d, r] = await Promise.all([
+    const [s, w, d, r, mr] = await Promise.all([
       fetch(`${API}/earnings/summary`, { headers }).then(x => x.json()),
       fetch(`${API}/earnings/weekly?weeks=8`, { headers }).then(x => x.json()),
       fetch(`${API}/earnings/daily?days=14`, { headers }).then(x => x.json()),
       fetch(`${API}/earnings/rides?limit=25`, { headers }).then(x => x.json()),
+      fetch(`${API}/reviews/me`, { headers }).then(x => x.json()),
     ]);
     const asSeries = (o: { buckets?: Bucket[]; max?: number; total?: number }): Series =>
       ({ buckets: o.buckets ?? [], max: o.max ?? 0, total: o.total ?? 0 });
@@ -127,6 +137,7 @@ export default function EarningsPage() {
       w: asSeries(w),
       d: asSeries(d),
       r: (Array.isArray(r) ? r : []) as RideRow[],
+      mr: mr as MyRating,
     };
   }, [headers]);
 
@@ -134,12 +145,13 @@ export default function EarningsPage() {
     if (!token) return;
     let cancelled = false;
     fetchAll()
-      .then(({ s, w, d, r }) => {
+      .then(({ s, w, d, r, mr }) => {
         if (cancelled) return;
         setSummary(s);
         setWeekly(w);
         setDaily(d);
         setRides(r);
+        setMyRating(mr);
       })
       .catch(() => { if (!cancelled) setError("Could not load your earnings."); });
     return () => { cancelled = true; };
@@ -225,6 +237,65 @@ export default function EarningsPage() {
             )}
             A fare goes uncollected when a passenger&apos;s wallet cannot cover their share, or the
             ride finished before wallets existed. Only money actually received is counted above.
+          </div>
+        </div>
+      )}
+
+      {/* Feature 7: Driver Rating & Review — the average on the driver's own profile */}
+      {myRating && (
+        <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+            <div style={{ textAlign: "center", minWidth: 130 }}>
+              <div style={{ fontSize: "2.4rem", fontWeight: 800, color: "var(--warning)", lineHeight: 1 }}>
+                {myRating.average != null ? myRating.average.toFixed(1) : "—"}
+              </div>
+              <div style={{ fontSize: "1rem", letterSpacing: 2, marginTop: 4 }}>
+                {[1, 2, 3, 4, 5].map(n => (
+                  <span key={n} style={{ opacity: myRating.average != null && n <= Math.round(myRating.average) ? 1 : 0.25 }}>
+                    ⭐
+                  </span>
+                ))}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginTop: 6 }}>
+                {myRating.count} review{myRating.count === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <h2 style={{ fontSize: "1.05rem", marginBottom: 8 }}>⭐ Your rider rating</h2>
+              {myRating.count === 0 ? (
+                <p style={{ fontSize: "0.85rem", color: "var(--text-tertiary)" }}>
+                  No reviews yet. Passengers can rate you once a ride you drove is completed.
+                </p>
+              ) : (
+                <>
+                  {[5, 4, 3, 2, 1].map(n => {
+                    const c = myRating.histogram[String(n)] ?? 0;
+                    const pct = myRating.count ? (c / myRating.count) * 100 : 0;
+                    return (
+                      <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-tertiary)", width: 12 }}>{n}</span>
+                        <div style={{ flex: 1, height: 6, background: "var(--surface)", borderRadius: 3 }}>
+                          <div style={{ width: `${pct}%`, height: "100%", background: "var(--warning)", borderRadius: 3 }} />
+                        </div>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-tertiary)", width: 16, textAlign: "right" }}>{c}</span>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {myRating.reviews.slice(0, 3).map(rv => (
+                      <div key={rv.id} style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                        <span style={{ color: "var(--warning)" }}>{"⭐".repeat(rv.stars)}</span>{" "}
+                        {rv.comment || <em style={{ color: "var(--text-tertiary)" }}>no comment</em>}
+                        <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>
+                          {rv.reviewer_name}{rv.route ? ` · ${rv.route}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

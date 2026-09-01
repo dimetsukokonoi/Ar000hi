@@ -36,6 +36,15 @@ interface Summary {
 
 type Filter = "all" | "driver" | "passenger";
 
+// Feature 7: a completed ride this rider has not rated yet.
+interface PendingReview {
+  ride_id: string;
+  driver_id: string;
+  driver_name: string;
+  source: string;
+  destination: string;
+}
+
 const taka = (n: number) =>
   "৳" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -64,6 +73,13 @@ export default function HistoryPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Feature 7: Driver Rating & Review
+  const [pending, setPending] = useState<PendingReview[]>([]);
+  const [rateTarget, setRateTarget] = useState<PendingReview | null>(null);
+  const [stars, setStars] = useState(5);
+  const [comment, setComment] = useState("");
+  const [rating, setRating] = useState(false);
+  const [rateNotice, setRateNotice] = useState("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = useMemo(
@@ -72,21 +88,27 @@ export default function HistoryPage() {
   );
 
   const fetchAll = useCallback(async (role: Filter) => {
-    const [t, s] = await Promise.all([
+    const [t, s, pr] = await Promise.all([
       fetch(`${API}/history?role=${role}&limit=100`, { headers }).then(r => r.json()),
       fetch(`${API}/history/summary`, { headers }).then(r => r.json()),
+      fetch(`${API}/reviews/pending`, { headers }).then(r => r.json()),
     ]);
-    return { t: (Array.isArray(t) ? t : []) as Trip[], s: s as Summary };
+    return {
+      t: (Array.isArray(t) ? t : []) as Trip[],
+      s: s as Summary,
+      pr: (Array.isArray(pr) ? pr : []) as PendingReview[],
+    };
   }, [headers]);
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     fetchAll(filter)
-      .then(({ t, s }) => {
+      .then(({ t, s, pr }) => {
         if (cancelled) return;
         setTrips(t);
         setSummary(s);
+        setPending(pr);
         setLoading(false);
       })
       .catch(() => {
@@ -94,6 +116,34 @@ export default function HistoryPage() {
       });
     return () => { cancelled = true; };
   }, [token, filter, fetchAll]);
+
+  const submitReview = async () => {
+    if (!rateTarget) return;
+    setRating(true);
+    try {
+      const res = await fetch(`${API}/reviews`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          ride_id: rateTarget.ride_id,
+          reviewee_id: rateTarget.driver_id,
+          stars,
+          comment,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not save your review");
+      setRateNotice(`Thanks — you rated ${rateTarget.driver_name} ${stars} star${stars === 1 ? "" : "s"}.`);
+      setPending(prev => prev.filter(x => x.ride_id !== rateTarget.ride_id));
+      setRateTarget(null);
+      setStars(5);
+      setComment("");
+    } catch (e) {
+      setRateNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRating(false);
+    }
+  };
 
   if (error) {
     return <div className="glass-card" style={{ padding: 24, color: "var(--danger)" }}>⚠️ {error}</div>;
@@ -129,6 +179,37 @@ export default function HistoryPage() {
             <div style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginTop: 4 }}>
               Net {summary.net >= 0 ? "+" : "−"}{taka(Math.abs(summary.net))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {rateNotice && (
+        <div style={{ padding: "10px 14px", marginBottom: 16, borderRadius: "var(--radius-md)",
+                      background: "var(--success-muted)", color: "var(--success)", fontSize: "0.85rem" }}>
+          {rateNotice}
+        </div>
+      )}
+
+      {/* Feature 7: post-ride prompt — asked once per ride, then it goes away */}
+      {pending.length > 0 && (
+        <div className="glass-card" style={{ padding: 18, marginBottom: 20,
+                                             borderLeft: "3px solid var(--warning)" }}>
+          <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: 10 }}>
+            ⭐ Rate your recent {pending.length === 1 ? "ride" : "rides"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pending.slice(0, 3).map(pr => (
+              <div key={pr.ride_id} style={{ display: "flex", justifyContent: "space-between",
+                                             alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                  <strong style={{ color: "var(--text-primary)" }}>{pr.driver_name}</strong>
+                  {" · "}{pr.source} → {pr.destination}
+                </div>
+                <button className="btn btn-sm btn-primary" onClick={() => setRateTarget(pr)}>
+                  Rate driver
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -206,6 +287,58 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      {/* Feature 7: star + comment dialog */}
+      {rateTarget && (
+        <div className="modal-backdrop" onClick={() => !rating && setRateTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <div className="modal-title">Rate {rateTarget.driver_name}</div>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 16 }}>
+              {rateTarget.source} → {rateTarget.destination}
+            </div>
+
+            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setStars(n)}
+                  aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                  style={{ background: "none", border: "none", cursor: "pointer",
+                           fontSize: "1.9rem", lineHeight: 1, padding: 0,
+                           opacity: n <= stars ? 1 : 0.25 }}
+                >
+                  ⭐
+                </button>
+              ))}
+              <span style={{ alignSelf: "center", marginLeft: 8, color: "var(--text-secondary)",
+                             fontSize: "0.85rem" }}>
+                {stars} / 5
+              </span>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Comment (optional)</label>
+              <textarea
+                className="input textarea"
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="How was the ride?"
+                maxLength={500}
+                rows={3}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-ghost" disabled={rating} onClick={() => setRateTarget(null)}>
+                Not now
+              </button>
+              <button className="btn btn-primary" disabled={rating} onClick={submitReview}>
+                {rating ? <span className="spinner" /> : "Submit review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

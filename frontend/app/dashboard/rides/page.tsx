@@ -13,6 +13,38 @@ interface Hotspot {
   popular?: boolean;
 }
 
+// The API returns each stop as an object ({place, sequence, status}); the
+// create-ride form and some older paths use plain strings. Accept either, so a
+// multi-stop ride does not crash the page.
+type RideStop = string | { place?: string; stop_name?: string };
+
+const stopPlace = (stop: RideStop): string =>
+  typeof stop === "string" ? stop : (stop?.place ?? stop?.stop_name ?? "");
+
+// Feature 18: what cancelling would cost, previewed before anything happens.
+interface CancelQuote {
+  will_be_charged: boolean;
+  penalty: number;
+  exposure: number;
+  dispatched: boolean;
+  role: "driver" | "passenger";
+  reason: string;
+  wallet_balance: number;
+  policy: { free_before_dispatch: boolean; penalty_rate: number; min_penalty: number; max_penalty: number };
+}
+
+// The driver's view of who has asked for a seat. `id` is the ride_passengers
+// row id, which is what POST /rides/{id}/accept/{passenger_id} expects.
+interface RidePassenger {
+  id: string;
+  passenger_id: string;
+  passenger_name: string;
+  seats: number;
+  pickup_stop: string;
+  dropoff_stop: string;
+  status: string;
+}
+
 interface StopInfo {
   id: string;
   stop_name: string;
@@ -38,7 +70,7 @@ interface RideInfo {
   ended_at?: string | null;
   created_at?: string | null;
   female_only?: boolean;
-  stops?: string[];
+  stops?: RideStop[];
   stop_details?: StopInfo[];
 }
 
@@ -138,6 +170,14 @@ export default function RidesPage() {
   const [joinSeats, setJoinSeats] = useState(1);
 
   const [split, setSplit] = useState<Record<string, SplitInfo>>({});
+  // Feature 18: Ride Cancellation Policy & Penalty
+  const [cancelTarget, setCancelTarget] = useState<RideInfo | null>(null);
+  const [cancelQuote, setCancelQuote] = useState<CancelQuote | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  // Ride lifecycle: accept requests, start the ride, end it (which settles the fare)
+  const [manageOpen, setManageOpen] = useState<Record<string, RidePassenger[]>>({});
+  const [busyRide, setBusyRide] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -307,6 +347,138 @@ export default function RidesPage() {
     }
   };
 
+  // ---- Ride lifecycle -------------------------------------------------------
+  const authHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  });
+
+  const toggleManage = async (rideId: string) => {
+    if (manageOpen[rideId]) {
+      setManageOpen(prev => {
+        const next = { ...prev };
+        delete next[rideId];
+        return next;
+      });
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/rides/${rideId}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not load the ride");
+      setManageOpen(prev => ({ ...prev, [rideId]: data.passengers || [] }));
+    } catch (e) {
+      showNotice("error", e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const acceptPassenger = async (rideId: string, passengerRowId: string, name: string) => {
+    setBusyRide(rideId);
+    try {
+      const res = await fetch(`${API}/rides/${rideId}/accept/${passengerRowId}`, {
+        method: "POST", headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not accept the request");
+      showNotice("success", `${name} is on board`);
+      const refreshed = await fetch(`${API}/rides/${rideId}`, { headers: authHeaders() });
+      const rd = await refreshed.json();
+      setManageOpen(prev => ({ ...prev, [rideId]: rd.passengers || [] }));
+      reload();
+    } catch (e) {
+      showNotice("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyRide(null);
+    }
+  };
+
+  // Ending a ride is what settles the fare: riders are debited, the driver is
+  // credited, and the trip becomes a receipt.
+  const lifecycleAction = async (rideId: string, action: "start" | "end") => {
+    setBusyRide(rideId);
+    try {
+      const res = await fetch(`${API}/rides/${rideId}/${action}`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: action === "end" ? JSON.stringify({}) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Could not ${action} the ride`);
+      if (action === "end") {
+        const st = data.settlement || {};
+        const paid = st.driver_credited || 0;
+        showNotice(
+          "success",
+          paid > 0
+            ? `Ride completed — ৳${paid.toFixed(2)} paid into your wallet.`
+            : "Ride completed."
+        );
+      } else {
+        showNotice("success", "Ride started — you can now end it when you arrive.");
+      }
+      setManageOpen(prev => {
+        const next = { ...prev };
+        delete next[rideId];
+        return next;
+      });
+      reload();
+    } catch (e) {
+      showNotice("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyRide(null);
+    }
+  };
+
+  // Fetch the penalty preview BEFORE opening the dialog, so the warning shows the
+  // same number that will actually be charged.
+  const openCancelModal = async (ride: RideInfo) => {
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    setCancelTarget(ride);
+    setCancelQuote(null);
+    setCancelReason("");
+    try {
+      const res = await fetch(`${API}/rides/${ride.id}/cancellation-policy`, { headers });
+      const data = await res.json();
+      if (res.ok) {
+        setCancelQuote(data);
+      } else {
+        showNotice("error", data.detail || "Could not check the cancellation policy");
+        setCancelTarget(null);
+      }
+    } catch {
+      showNotice("error", "Network error - could not check the cancellation policy");
+      setCancelTarget(null);
+    }
+  };
+
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    setCancelling(true);
+    try {
+      const res = await fetch(`${API}/rides/${cancelTarget.id}/cancel`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotice(data.penalty_charged > 0 || data.uncollected ? "error" : "success", data.message);
+        setCancelTarget(null);
+        setCancelQuote(null);
+        reload();
+      } else {
+        showNotice("error", data.detail || "Could not cancel the ride");
+      }
+    } catch {
+      showNotice("error", "Network error - could not cancel the ride");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const loadSplit = async (rideId: string) => {
     if (split[rideId]) {
       setSplit({});
@@ -328,9 +500,13 @@ export default function RidesPage() {
     }
   };
 
-  const getHotspotName = (idOrName: string) => {
-    const found = hotspots.find(h => h.id.toLowerCase() === idOrName.toLowerCase() || h.name.toLowerCase() === idOrName.toLowerCase());
-    return found ? found.name : idOrName;
+  const getHotspotName = (idOrName: RideStop) => {
+    const name = stopPlace(idOrName);
+    if (!name) return "";
+    const found = hotspots.find(
+      h => h.id.toLowerCase() === name.toLowerCase() || h.name.toLowerCase() === name.toLowerCase()
+    );
+    return found ? found.name : name;
   };
 
   const surgeBadge = surge ? BADGES[surge.label] || "badge-success" : "badge-success";
@@ -466,6 +642,24 @@ export default function RidesPage() {
               🚕 Request Seat
             </button>
           )}
+          {/* Driver controls: accept requests, then start, then end (which pays out) */}
+          {isDriver && ride.status !== "completed" && ride.status !== "cancelled" && (
+            <button className="btn btn-sm btn-secondary" onClick={() => toggleManage(ride.id)}>
+              👥 {manageOpen[ride.id] ? "Hide requests" : "Manage requests"}
+            </button>
+          )}
+          {isDriver && ride.status === "scheduled" && (
+            <button className="btn btn-sm btn-primary" disabled={busyRide === ride.id}
+                    onClick={() => lifecycleAction(ride.id, "start")}>
+              ▶ Start Ride
+            </button>
+          )}
+          {isDriver && ride.status === "active" && (
+            <button className="btn btn-sm btn-primary" disabled={busyRide === ride.id}
+                    onClick={() => lifecycleAction(ride.id, "end")}>
+              ⏹ End Ride &amp; Collect Fare
+            </button>
+          )}
           {isParticipant && (ride.status === "active" || ride.status === "completed") && (
             <button className="btn btn-sm btn-secondary" onClick={() => loadSplit(ride.id)}>
               💸 Fare Splitter
@@ -481,7 +675,52 @@ export default function RidesPage() {
               🗺️ Live Map Tracking
             </Link>
           )}
+          {/* Feature 18: only offered while the ride can still be cancelled */}
+          {isParticipant && (ride.status === "scheduled" || ride.status === "active") && (
+            <button className="btn btn-sm btn-danger" onClick={() => openCancelModal(ride)}>
+              ✖ {isDriver ? "Cancel Ride" : "Cancel My Seat"}
+            </button>
+          )}
         </div>
+
+        {manageOpen[ride.id] && (
+          <div style={{ marginTop: 16, padding: 16, background: "var(--surface)",
+                        borderRadius: "var(--radius-md)", border: "1px solid var(--surface-border)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 10, fontSize: "0.92rem" }}>
+              👥 Seat requests
+            </div>
+            {manageOpen[ride.id].length === 0 ? (
+              <p style={{ fontSize: "0.85rem", color: "var(--text-tertiary)" }}>
+                Nobody has requested a seat yet.
+              </p>
+            ) : (
+              manageOpen[ride.id].map(pp => (
+                <div key={pp.id} style={{ display: "flex", justifyContent: "space-between",
+                                          alignItems: "center", gap: 12, flexWrap: "wrap",
+                                          padding: "8px 0",
+                                          borderTop: "1px solid var(--surface-border)" }}>
+                  <div style={{ fontSize: "0.85rem" }}>
+                    <strong style={{ color: "var(--text-primary)" }}>{pp.passenger_name}</strong>
+                    <span style={{ color: "var(--text-tertiary)" }}>
+                      {" "}· {pp.seats} seat{pp.seats === 1 ? "" : "s"}
+                      {pp.pickup_stop ? ` · ${getHotspotName(pp.pickup_stop)} → ${getHotspotName(pp.dropoff_stop)}` : ""}
+                    </span>
+                  </div>
+                  {pp.status === "requested" ? (
+                    <button className="btn btn-sm btn-primary" disabled={busyRide === ride.id}
+                            onClick={() => acceptPassenger(ride.id, pp.id, pp.passenger_name)}>
+                      ✓ Accept
+                    </button>
+                  ) : (
+                    <span className={`badge ${pp.status === "cancelled" ? "badge-danger" : "badge-success"}`}>
+                      {pp.status}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         {s && (
           <div style={{ marginTop: 16, padding: 16, background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--surface-border)" }}>
@@ -1034,7 +1273,7 @@ export default function RidesPage() {
                 >
                   <option value={joiningRide.source}>Source: {getHotspotName(joiningRide.source)}</option>
                   {joiningRide.stops?.map((stop, idx) => (
-                    <option key={idx} value={stop}>Stop {idx + 1}: {getHotspotName(stop)}</option>
+                    <option key={idx} value={stopPlace(stop)}>Stop {idx + 1}: {getHotspotName(stop)}</option>
                   ))}
                 </select>
               </div>
@@ -1047,7 +1286,7 @@ export default function RidesPage() {
                   onChange={e => setJoinDropoffStop(e.target.value)}
                 >
                   {joiningRide.stops?.map((stop, idx) => (
-                    <option key={idx} value={stop}>Stop {idx + 1}: {getHotspotName(stop)}</option>
+                    <option key={idx} value={stopPlace(stop)}>Stop {idx + 1}: {getHotspotName(stop)}</option>
                   ))}
                   <option value={joiningRide.destination}>Final: {getHotspotName(joiningRide.destination)}</option>
                 </select>
@@ -1074,6 +1313,97 @@ export default function RidesPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 18: Ride Cancellation Policy & Penalty - warn before charging */}
+      {cancelTarget && (
+        <div className="modal-backdrop" onClick={() => !cancelling && setCancelTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="modal-title">
+              {cancelQuote?.role === "driver" ? "Cancel this ride?" : "Cancel your seat?"}
+            </div>
+
+            <div style={{ fontSize: "0.86rem", color: "var(--text-secondary)", marginBottom: 14 }}>
+              {cancelTarget.source} to {cancelTarget.destination}
+            </div>
+
+            {!cancelQuote ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+                <span className="spinner" />
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: "var(--radius-md)",
+                    borderLeft: `3px solid ${cancelQuote.will_be_charged ? "var(--danger)" : "var(--success)"}`,
+                    background: cancelQuote.will_be_charged ? "var(--danger-muted)" : "var(--success-muted)",
+                    marginBottom: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "0.9rem",
+                      color: cancelQuote.will_be_charged ? "var(--danger)" : "var(--success)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {cancelQuote.will_be_charged
+                      ? `⚠️ Late-cancellation fee: ৳${cancelQuote.penalty.toFixed(2)}`
+                      : "✅ Free to cancel"}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                    {cancelQuote.reason}
+                  </div>
+                </div>
+
+                {cancelQuote.will_be_charged && (
+                  <div style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginBottom: 14, lineHeight: 1.7 }}>
+                    Your share of this ride: ৳{cancelQuote.exposure.toFixed(2)} &middot; fee is{" "}
+                    {Math.round(cancelQuote.policy.penalty_rate * 100)}% (min ৳
+                    {cancelQuote.policy.min_penalty.toFixed(0)}, max ৳
+                    {cancelQuote.policy.max_penalty.toFixed(0)}).
+                    <br />
+                    Wallet balance: ৳{cancelQuote.wallet_balance.toFixed(2)}
+                    {cancelQuote.wallet_balance < cancelQuote.penalty && (
+                      <span style={{ color: "var(--warning)" }}>
+                        {" "}— not enough to cover the fee; it will be recorded as unpaid.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="input-group">
+                  <label className="input-label">Reason (optional)</label>
+                  <input
+                    className="input"
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                    placeholder="e.g. class got cancelled"
+                    maxLength={300}
+                  />
+                </div>
+
+                <div className="modal-actions">
+                  <button className="btn btn-ghost" disabled={cancelling} onClick={() => setCancelTarget(null)}>
+                    Keep the ride
+                  </button>
+                  <button className="btn btn-danger" disabled={cancelling} onClick={confirmCancel}>
+                    {cancelling ? (
+                      <span className="spinner" />
+                    ) : cancelQuote.will_be_charged ? (
+                      `Cancel and pay ৳${cancelQuote.penalty.toFixed(2)}`
+                    ) : (
+                      "Yes, cancel"
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

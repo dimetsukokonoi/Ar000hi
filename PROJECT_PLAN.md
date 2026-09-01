@@ -63,12 +63,12 @@ Legend: ✅ done · 🔶 partial · ❌ not started
 ### Sprint 5 — Quality & Admin Controls (weeks 9-10) — 🚩 **CURRENT SPRINT**
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
-| 7 | Driver Rating & Review | ❌ | Post-ride 1-5 star + comment; average shown on driver profile. |
+| 7 | Driver Rating & Review | ✅ | Post-ride 1-5 star + comment; average shown on driver profile. *(One review per rider per ride, enforced by a UNIQUE index; only completed rides; participants only; reviews are never edited or deleted.)* |
 | 17 | Admin Complaint Panel | ✅ | File complaint; admin review + notes + statuses + stats. |
-| 18 | Ride Cancellation Policy & Penalty | ❌ | Cancel before dispatch = free; after dispatch = penalty shown as warning. |
+| 18 | Ride Cancellation Policy & Penalty | ✅ | Cancel before dispatch = free; after dispatch = penalty shown as warning. *(20% of the canceller's fare exposure, clamped to BDT 20-150; charged to the wallet as a `penalty` ledger row. Driver cancels the whole ride, a passenger only their seat.)* |
 | 20 | Eco/Footprint Tracker | ✅ | CO₂ saved per completed ride vs solo; aggregated totals + trees/fuel equivalents. |
 
-## 4. Recommended build order for the remaining 2 features
+## 4. Build order — all features delivered
 
 Four items from the original nine (#3 Female-Only, #8 Scheduled, #6 Matching, #19 Multi-Stop)
 shipped in the Sprint 2/3 completion pass and have been removed from this list.
@@ -86,8 +86,9 @@ within a sprint**, so Sprint 4 closes before Sprint 5 opens.
    simulated bKash tokenized checkout. Architecture in §4.1 below.
 
 ### Sprint 5 — after Sprint 4 is green
-4. **Driver Rating & Review (#7)** — add `reviews` table (ride_id, reviewer_id, reviewee_id, stars, comment); post-ride prompt on ride detail; avg rating on the driver listing. *(≈1 day)*
-5. **Ride Cancellation Policy & Penalty (#18)** — `rides.status` already accepts `'cancelled'` in its CHECK constraint but **no route ever sets it**; add the cancel flow + penalty fee (rider cancels after driver accepted → fee) + frontend warning modal. *(≈1 day)*
+~~4. **Driver Rating & Review (#7)**~~ — ✅ **DONE (2026-09-01).** See §4.5.
+   **All 20 SRS features are now implemented.**
+~~5. **Ride Cancellation Policy & Penalty (#18)**~~ — ✅ **DONE (2026-09-01).** See §4.4.
 
 **Real-time GPS upgrade (recommended, high value):** convert `/track/[token]` + dashboard tracking to a WebSocket (the chat WS in `backend/app/routes/chat.py` is a ready template). Meets NFR-1 (<2s SOS/live updates) and SRS 3.3.4.
 
@@ -180,6 +181,57 @@ and a Blob `.txt` download named after the receipt number.
 
 **Access control:** receipts are participants-only — a non-participant gets 403, an unknown
 ride 404.
+
+### 4.4 Cancellation Policy as built (#18)
+
+**The rule: free before dispatch, charged after.** "Dispatch" is the moment the driver
+presses Start (`rides.status` becomes `active`). Before that, cancelling costs nothing.
+After it, the cancelling party pays, because the other side has already committed — the
+driver is en route, or seats were held out of the pool.
+
+**The fee** is 20% of the canceller's *fare exposure*, clamped to BDT 20-150 so it is
+neither trivial on a cheap hop nor punitive on a long surge-priced trip. Exposure differs
+by role: a driver is exposed to the whole ride total, a passenger only to their own
+seat-weighted share (the Feature 5 split).
+
+**Preview and charge share one function.** `_cancellation_quote()` powers both
+`GET /rides/{id}/cancellation-policy` (the warning dialog) and `POST /rides/{id}/cancel`
+(the actual charge), so the number the user is warned about and the number they are billed
+cannot drift apart — the same principle the splitter and the wallet already follow.
+
+**Scope of the cancellation:** a driver cancels the whole ride (every passenger is marked
+cancelled); a passenger cancels only their own seat and the ride continues.
+
+**If the wallet cannot cover the fee**, the cancellation still goes through — trapping
+someone in a ride they cannot leave is worse — but no money is invented: the fee is
+reported as uncollected, exactly like an unsettled fare.
+
+**Schema:** the penalty is a `penalty` row in the existing ledger. `transactions.kind` did
+not allow that value on databases created earlier, and SQLite cannot ALTER a CHECK
+constraint, so `init_db()` rebuilds the table once, inside a transaction, only when the
+constraint is actually missing the value.
+
+### 4.5 Driver Rating & Review as built (#7)
+
+**Post-ride prompt.** `GET /api/reviews/pending` returns completed rides where the rider
+still owes the driver a review, so the app asks once and then stops asking. Submitting
+removes it from the list.
+
+**One review per (ride, reviewer, reviewee)**, enforced by a UNIQUE index rather than
+application logic — a second attempt hits the constraint and is turned into a friendly 409.
+
+**Rules, all server-side:** the ride must be `completed`; both parties must have been on it
+(driver or accepted passenger); you cannot review yourself; stars must be 1-5.
+
+**Reviews are append-only**, for the same reason the wallet ledger is: a rating that can be
+quietly edited afterwards is not evidence.
+
+**Endpoints:** `POST /api/reviews`, `GET /api/reviews/pending`, `GET /api/reviews/me`
+(own average, star histogram, recent comments) and `GET /api/reviews/driver/{id}` for a
+public profile.
+
+**UI:** a prompt banner plus a star-and-comment dialog on Ride History, and the driver's own
+average with a histogram and recent comments on their Earnings page.
 
 ## 5. Non-Functional Requirements — gap checklist
 

@@ -30,6 +30,9 @@ from app.routes.earnings import router as earnings_router
 # Feature 10: Ride History & Receipt Log
 from app.routes.history import router as history_router
 
+# Feature 7: Driver Rating & Review
+from app.routes.reviews import router as reviews_router
+
 # Initialize database on startup
 init_db()
 
@@ -71,6 +74,7 @@ app.include_router(eco_router, prefix="/api/eco", tags=["Eco Tracker"])
 app.include_router(wallet_router, prefix="/api/wallet", tags=["Wallet & bKash"])
 app.include_router(earnings_router, prefix="/api/earnings", tags=["Driver Earnings"])
 app.include_router(history_router, prefix="/api/history", tags=["Ride History & Receipts"])
+app.include_router(reviews_router, prefix="/api/reviews", tags=["Driver Rating & Review"])
 
 # The SIMULATED bKash gateway page. Mounted only in demo mode — in production the
 # browser would be redirected to bKash's own hosted checkout instead. Deliberately

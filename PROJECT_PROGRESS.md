@@ -5,17 +5,17 @@
 
 ## 1. Overall
 
-**18 / 20 SRS features complete (90%).** Auth, safety, Ornab's 5 modules (cost
+**20 / 20 SRS features complete (100%).** Auth, safety, Ornab's 5 modules (cost
 splitter, trusted contacts, ride chat, eco tracker, peak-hour surge) and the
 Sprint 2/3 completion pass (female-only mode, smart matching, scheduled booking,
-multi-stop, hotspots) are shipped. The remaining 2 features are all additive on
-the existing rides core and are scheduled per `PROJECT_PLAN.md` §4.
+multi-stop, hotspots) are shipped. No SRS features remain outstanding; the backlog is now non-functional work
+(tests, real-time tracking, deployment) rather than features.
 
 **Sprint status: Sprints 1-4 are now fully closed** (2/2, 4/4, 5/5, 5/5).
-#9 Wallet & bKash, #16 Driver Earnings and #10 Ride History all landed
-2026-09-01, completing Sprint 4. **Sprint 5 is now current at 2/4** — #17
-Complaints and #20 Eco were delivered early, leaving **#7 Driver Rating** and
-**#18 Cancellation Policy** as the only remaining SRS features. Note that two Sprint-5 features (#17 Admin Complaint Panel,
+**All five sprints are now closed** (2/2, 4/4, 5/5, 5/5, 4/4). Sprint 4 was
+completed on 2026-09-01 with #9 Wallet & bKash, #16 Driver Earnings and #10 Ride
+History; Sprint 5 followed the same day with #18 Cancellation Policy and #7
+Driver Rating & Review. Every SRS feature is implemented. Note that two Sprint-5 features (#17 Admin Complaint Panel,
 #20 Eco Tracker) were also delivered ahead of sequence; nothing from an earlier
 sprint is outstanding, so no downstream work is blocked.
 
@@ -29,7 +29,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 4 | In-App SOS Button | ✅ | `sos_alerts` table; mock notification; admin resolve |
 | 5 | Ride Cost Splitter | ✅ | `GET /api/rides/{id}/split` — fare × surge, seat-weighted largest-remainder split (sums exactly to total) |
 | 6 | Campus Zone Smart Matching | ✅ | `/api/rides/match` multi-factor scoring (route, timetable, intermediate stops, female-only) |
-| 7 | Driver Rating & Review | ❌ | No `reviews` table |
+| 7 | Driver Rating & Review | ✅ | 1-5 stars + comment after a completed ride; one review per rider per ride (UNIQUE index); post-ride prompt on Ride History; average, histogram and comments on the driver profile |
 | 8 | Scheduled Ride Booking | ✅ | `rides.scheduled_at` field + advance booking validation & UI selector |
 | 9 | Wallet & bKash Integration | ✅ | Prepaid `wallets` + append-only `transactions` ledger; simulated bKash tokenized checkout behind a `PaymentGateway` interface (no live client — credentials need merchant onboarding); auto-settlement at ride end; cash-out; reconciliation endpoint |
 | 10 | Ride History & Receipt Log | ✅ | Both-role trip log + per-ride receipt (print-to-PDF and `.txt` download); ledger-backed amounts; participants-only |
@@ -40,7 +40,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 15 | Ride Chat (In-App Messaging) | ✅ | WS `/ws/chat/{ride_id}` + REST history + UI |
 | 16 | Driver Earnings Dashboard | ✅ | Reads the wallet ledger (`ride_credit`); 8-week Asia/Dhaka bar chart, per-ride breakdown, unsettled rides surfaced separately, payout-ready balance |
 | 17 | Admin Complaint Panel | ✅ | Full CRUD + statuses + stats + admin notes |
-| 18 | Ride Cancellation Policy & Penalty | ❌ | `cancelled` status reserved; no penalty logic |
+| 18 | Ride Cancellation Policy & Penalty | ✅ | Free before dispatch, 20% fee after (clamped BDT 20-150); driver cancels the ride, passenger cancels their seat; charged to the wallet as a `penalty` row; warning dialog previews the exact amount |
 | 19 | Multi-Stop Ride Support | ✅ | `ride_stops` table + waypoint status tracking + passenger pickup/drop-off stop joining |
 | 20 | Eco/Footprint Tracker | ✅ | CO₂ saved vs solo, trees + fuel equivalents, gamified UI |
 
@@ -52,7 +52,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 2 — Matching & Logistics | 4/4 ✅ | Hotspots (#14), Matching (#6), Scheduled (#8), Multi-Stop (#19) complete |
 | 3 — Tracking & Safety | 5/5 ✅ | GPS (#2), SOS (#4), Contacts (#12), Chat (#15), Female-Only (#3) complete |
 | 4 — Payments & Earnings | 5/5 ✅ | Splitter (#5), Surge (#13), Wallet & bKash (#9), Driver Earnings (#16), Ride History (#10) — **sprint complete** |
-| 5 — Admin & Quality | 2/4 🔶 | 🚩 **CURRENT** — Complaints (#17), Eco (#20) done; reviews (#7), cancellation (#18) missing |
+| 5 — Admin & Quality | 4/4 ✅ | Complaints (#17), Eco (#20), Cancellation (#18), Driver Rating (#7) — **sprint complete** |
 
 ## 4. Verification evidence (2026-07-31)
 
@@ -261,6 +261,46 @@ Verified after the fixes: owed(400) == received(200) + uncollected(200); all thr
 suites re-run green (#9 22 checks, #16 19, #10 27) with no regressions; `npm run build`
 clean (21 routes).
 
+### Feature 18 — Ride Cancellation Policy & Penalty (2026-09-01)
+- **Rule:** free before dispatch (`status = 'scheduled'`), charged after (`'active'`).
+- **Fee:** 20% of the canceller's fare exposure, clamped to BDT 20-150. A driver is
+  exposed to the whole ride total; a passenger only to their seat-weighted share.
+- **Endpoints:** `GET /api/rides/{id}/cancellation-policy` (preview, no side effects) and
+  `POST /api/rides/{id}/cancel`. Both call the same `_cancellation_quote()`, so the warning
+  and the charge cannot diverge.
+- **Scope:** driver cancels the whole ride and every passenger is marked cancelled; a
+  passenger cancels only their own seat and the ride continues.
+- **Cannot pay:** the cancellation still succeeds and the fee is reported uncollected --
+  no negative balances, no invented money, consistent with unsettled fares.
+- **Schema:** added `penalty` to `transactions.kind` (SQLite cannot ALTER a CHECK, so
+  `init_db()` rebuilds the table once, transactionally, only when needed — verified on the
+  live demo DB with all 30 existing rows preserved), plus `rides.cancelled_at/cancelled_by/
+  cancel_reason` and `ride_passengers.cancelled_at/penalty_amount`.
+- **UI:** a Cancel button on cancellable rides opens a dialog showing the exact fee, the
+  reason, the policy rates and the wallet balance — warning the user *before* anything is
+  charged, and flagging when the balance will not cover it.
+- **Verified:** 31 checks — free before dispatch, 20% after for both roles, quoted amount ==
+  charged amount, ledger row written and reconciling, guards (already-cancelled 400,
+  completed 400, outsider 403, unauthenticated 401, unknown 404), the cannot-pay path, and
+  cancelled rides not polluting earnings or history. Browser run charged BDT 126.00 exactly
+  as quoted (wallet 2135 -> 2009), 0 console errors. All Sprint 4 suites re-run green.
+
+### Feature 7 — Driver Rating & Review (2026-09-01) — closes Sprint 5
+- **Schema:** `reviews` (ride_id, reviewer_id, reviewee_id, stars 1-5, comment) with
+  `UNIQUE(ride_id, reviewer_id, reviewee_id)` — the anti-abuse rule lives in the index, not
+  in application logic, so a duplicate is impossible rather than merely discouraged.
+- **Endpoints:** `POST /api/reviews`, `GET /api/reviews/pending` (rides still awaiting a
+  review), `GET /api/reviews/me`, `GET /api/reviews/driver/{id}`.
+- **Rules:** completed rides only; both parties must have been on the ride; no self-reviews;
+  stars clamped 1-5; reviews are never edited or deleted.
+- **UI:** post-ride prompt + star/comment dialog on Ride History; the driver's own average,
+  star histogram and recent comments on their Earnings page.
+- **Verified:** 24 checks — the prompt appearing and then disappearing, averages across
+  multiple reviews, histogram, and every anti-gaming rule (duplicate 409, stars out of
+  range 400, non-participant 403, reviewing a non-participant 400, self-review 400, unknown
+  ride 404, unauthenticated 401, in-progress ride 400). Browser run: prompt → 4 stars →
+  submitted → prompt gone, 0 console errors. All six existing suites re-run green.
+
 ## 6. Known gaps & accepted deviations
 
 | Area | Gap | Mitigation / plan |
@@ -286,10 +326,8 @@ SQLite instead of PostgreSQL/PostGIS, and the 5 missing features in §2.
 1. ✅ Done (Sessions 9–13) — see HISTORY/PLAN. Live-browser tests 45/45 (Session 10);
    cross-platform launcher + IPv4 fix (Session 12); desktop-installer attempt reverted (Session 13).
 2. Commit the Session-12 launcher + IPv4 work (currently uncommitted) when the team is ready.
-3. **Sprint 4 is closed.** Sprint 5 remains: **#7 Driver Rating & Review** (needs a
-   `reviews` table) and **#18 Ride Cancellation Policy & Penalty** (the `cancelled` status
-   exists in the CHECK constraint but no route sets it; the `refund` ledger kind is already
-   reserved for its reversals).
+3. **All 20 SRS features are implemented.** What remains is non-functional: a committed
+   pytest suite, WebSocket live tracking (NFR-1), and the SQLite → PostgreSQL question.
 4. Make the committed test suite runnable: add `pytest` + `httpx` to `requirements.txt`
    and replace the hardcoded `/tmp/test_arooohi.db` with `tempfile.gettempdir()`.
 5. Extend coverage: port the 54-check regression script (`/tmp/opencode/test_backend.py`)
