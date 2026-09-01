@@ -31,7 +31,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 6 | Campus Zone Smart Matching | ✅ | `/api/rides/match` multi-factor scoring (route, timetable, intermediate stops, female-only) |
 | 7 | Driver Rating & Review | ❌ | No `reviews` table |
 | 8 | Scheduled Ride Booking | ✅ | `rides.scheduled_at` field + advance booking validation & UI selector |
-| 9 | Wallet & bKash Integration | ✅ | Prepaid `wallets` + append-only `transactions` ledger; simulated bKash tokenized checkout (`DEMO_MODE`-selected; `real_bkash.py` is the swap-in); auto-settlement at ride end; cash-out; reconciliation endpoint |
+| 9 | Wallet & bKash Integration | ✅ | Prepaid `wallets` + append-only `transactions` ledger; simulated bKash tokenized checkout behind a `PaymentGateway` interface (no live client — credentials need merchant onboarding); auto-settlement at ride end; cash-out; reconciliation endpoint |
 | 10 | Ride History & Receipt Log | ✅ | Both-role trip log + per-ride receipt (print-to-PDF and `.txt` download); ledger-backed amounts; participants-only |
 | 11 | Driver Vehicle Verification | ✅ | Doc upload + admin approve/reject + role flip |
 | 12 | Trusted Contact Sharing | ✅ | DB-backed CRUD; auto-share on tracking start (mock delivery) |
@@ -161,8 +161,9 @@ sprint is outstanding, so no downstream work is blocked.
   `platform_fee`), `bkash_payments` (one row per checkout attempt), plus three unique
   indexes that enforce idempotency.
 - **Gateway layer:** `app/payments/` — `base.py` (interface), `mock_bkash.py` (simulated,
-  deterministic test numbers), `real_bkash.py` (live sandbox via stdlib urllib),
-  `factory.py` (DEMO_MODE picks one). Going live changes only `real_bkash.py`.
+  deterministic test numbers), `factory.py` (returns it, and raises if `DEMO_MODE=0`
+  rather than pretending a simulator handles real money). No live client is included:
+  bKash issues credentials only through merchant onboarding.
 - **Simulated checkout page:** served by the BACKEND at `/bkash/checkout/{paymentID}` so the
   browser genuinely leaves Arooohi to authenticate, exactly as a real gateway forces.
   Mounted only when `DEMO_MODE=1`.
@@ -266,7 +267,7 @@ clean (21 routes).
 |------|-----|-------------------|
 | Real-time tracking | GPS is 5s polling, not WebSockets (NFR-1 <2s) | Reuse chat WS as template; planned in `PROJECT_PLAN.md` §4 |
 | Database | SQLite (SRS: PostgreSQL/PostGIS/MongoDB) | Accepted for demo; add WAL + FK indexes now |
-| Payments | Simulated gateway; live bKash needs merchant onboarding + an HTTPS callback | `real_bkash.py` is written and swap-ready: set `DEMO_MODE=0` plus the four `BKASH_*` env vars |
+| Payments | Simulated gateway only; a live bKash client needs merchant credentials + an HTTPS callback | Routes depend on the `PaymentGateway` interface, so a live client can be added without touching routes, tables or pages |
 | Notifications | SOS + auto-share mocked (console log) | Centralize into a notifications service |
 | Verification | Manual doc review (SRS: manual/automated) | Accepted; OCR automation out of scope |
 | Mobile | Web only (SRS: React Native) | Future work |

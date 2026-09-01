@@ -22,7 +22,7 @@ known code-quality backlog that must be addressed alongside feature work.
 | Frontend | React.js (web) + React Native (mobile) | Next.js 16 (web only) | ⚠ Mobile is out of scope for now |
 | Auth | — | JWT (python-jose HS256) + bcrypt | ✔ |
 | Realtime | REST + WebSockets (SRS 3.3.4) | WebSockets only for ride chat; GPS tracking is 5s HTTP polling | ⚠ See NFR-1 |
-| Payments | bKash API | Prepaid wallet ledger + simulated tokenized checkout | ⚠ Live gateway needs merchant onboarding; `real_bkash.py` is the swap-in |
+| Payments | bKash API | Prepaid wallet ledger + simulated tokenized checkout | ⚠ No live client: bKash credentials require merchant onboarding |
 
 ## 3. Sprint Roadmap (from SRS §7) — with acceptance criteria
 
@@ -98,11 +98,11 @@ cash-out out); ride settlement is an internal wallet-to-wallet transfer, so a ri
 always settle even with no network.
 
 **Gateway — simulated, real flow.** `app/payments/` defines a `PaymentGateway` interface
-with two implementations chosen by `DEMO_MODE`: `mock_bkash.py` (local, deterministic test
-numbers) and `real_bkash.py` (live `tokenized.sandbox.bka.sh` calls via stdlib urllib, so
-no new dependency). Switching to the live gateway changes **no route, table or page** —
-only which class the factory returns. Credentials come from `BKASH_APP_KEY`,
-`BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD` and are never committed.
+implemented by `mock_bkash.py`, which reproduces bKash's real tokenized-checkout lifecycle
+with deterministic test numbers. **No live client ships with this project** — bKash issues
+credentials only through merchant onboarding — and `factory.py` fails loudly rather than
+quietly using the simulator if `DEMO_MODE=0`. Because routes depend on the interface and
+never on a concrete class, adding a live client later would touch no route, table or page.
 
 **Safety properties enforced in `wallet_service.py`:**
 - *Append-only ledger.* `transactions` is never UPDATEd or DELETEd; a correction is a new

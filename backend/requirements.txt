@@ -6,3 +6,8 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 aiofiles==24.1.0
 pydantic==2.9.2
+# Feature 10: PDF receipt generation (pure Python, no native deps)
+fpdf2==2.8.8
+# Required for zoneinfo('Asia/Dhaka') on Windows, which ships no tz database.
+# Without it the backend fails to import (surge.py).
+tzdata>=2024.1

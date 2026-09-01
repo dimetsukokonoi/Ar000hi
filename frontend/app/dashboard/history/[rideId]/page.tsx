@@ -10,7 +10,8 @@ import { API } from "@/lib/api";
 // "Downloadable" is served two ways, both dependency-free:
 //   1. Print / Save as PDF  — window.print() with a print stylesheet that strips
 //      the app chrome, which is how the plan proposed it (§4, "frontend print/PDF").
-//   2. Download .txt        — a Blob + <a download> for a plain-text copy.
+//   2. Download PDF         — GET /api/history/{id}/receipt.pdf, generated
+//      server-side with fpdf2 and streamed back as an attachment.
 
 interface Share {
   passenger_id: string;
@@ -112,6 +113,7 @@ export default function ReceiptPage() {
   const params = useParams<{ rideId: string }>();
   const rideId = params.rideId;
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -179,17 +181,33 @@ export default function ReceiptPage() {
     return L.join("\n");
   };
 
-  const download = () => {
-    if (!receipt) return;
-    const blob = new Blob([asText(receipt)], { type: "text/plain;charset=utf-8" });
+  const saveBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${receipt.receipt_no}.txt`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // The PDF endpoint is auth-gated, so it cannot be a plain <a href> — fetch it
+  // with the bearer token, then hand the blob to the browser.
+  const downloadPdf = async () => {
+    if (!receipt) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API}/history/${rideId}/receipt.pdf`, { headers });
+      if (!res.ok) throw new Error("Could not generate the PDF");
+      saveBlob(await res.blob(), `${receipt.receipt_no}.pdf`);
+    } catch {
+      // Fall back to the plain-text copy so the user still gets their receipt.
+      saveBlob(new Blob([asText(receipt)], { type: "text/plain;charset=utf-8" }),
+               `${receipt.receipt_no}.txt`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (error) {
@@ -226,7 +244,9 @@ export default function ReceiptPage() {
           <button onClick={() => window.print()} className="btn btn-primary btn-sm">
             🖨️ Print / Save as PDF
           </button>
-          <button onClick={download} className="btn btn-secondary btn-sm">⬇️ Download .txt</button>
+          <button onClick={downloadPdf} disabled={downloading} className="btn btn-secondary btn-sm">
+            {downloading ? <span className="spinner" /> : "⬇️ Download PDF"}
+          </button>
         </div>
       </div>
 

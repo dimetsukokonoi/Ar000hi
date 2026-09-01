@@ -39,7 +39,11 @@ class PaymentResult:
 
 
 class PaymentGateway:
-    """Interface implemented by MockBkashGateway and RealBkashGateway."""
+    """Interface every gateway implementation must satisfy.
+
+    Only MockBkashGateway exists today. A live bKash client would implement
+    these same four methods; nothing outside this package would change.
+    """
 
     name = "abstract"
 

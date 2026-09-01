@@ -49,13 +49,17 @@ interface Summary {
   week_starting: string;
 }
 
-interface Week {
-  week_start: string;
+interface Bucket {
+  period_start: string;
   label: string;
   amount: number;
   rides: number;
   is_current: boolean;
 }
+
+interface Series { buckets: Bucket[]; max: number; total: number }
+
+type Period = "day" | "week";
 
 interface RideRow {
   ride_id: string;
@@ -95,8 +99,9 @@ function StatTile({ label, value, sub, tone }: {
 
 export default function EarningsPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [weeks, setWeeks] = useState<Week[]>([]);
-  const [maxWeek, setMaxWeek] = useState(0);
+  const [weekly, setWeekly] = useState<Series>({ buckets: [], max: 0, total: 0 });
+  const [daily, setDaily] = useState<Series>({ buckets: [], max: 0, total: 0 });
+  const [period, setPeriod] = useState<Period>("week");
   const [rides, setRides] = useState<RideRow[]>([]);
   const [hover, setHover] = useState<number | null>(null);
   const [asTable, setAsTable] = useState(false);
@@ -109,23 +114,31 @@ export default function EarningsPage() {
   );
 
   const fetchAll = useCallback(async () => {
-    const [s, w, r] = await Promise.all([
+    const [s, w, d, r] = await Promise.all([
       fetch(`${API}/earnings/summary`, { headers }).then(x => x.json()),
       fetch(`${API}/earnings/weekly?weeks=8`, { headers }).then(x => x.json()),
+      fetch(`${API}/earnings/daily?days=14`, { headers }).then(x => x.json()),
       fetch(`${API}/earnings/rides?limit=25`, { headers }).then(x => x.json()),
     ]);
-    return { s: s as Summary, w: w as { weeks: Week[]; max: number }, r: (Array.isArray(r) ? r : []) as RideRow[] };
+    const asSeries = (o: { buckets?: Bucket[]; max?: number; total?: number }): Series =>
+      ({ buckets: o.buckets ?? [], max: o.max ?? 0, total: o.total ?? 0 });
+    return {
+      s: s as Summary,
+      w: asSeries(w),
+      d: asSeries(d),
+      r: (Array.isArray(r) ? r : []) as RideRow[],
+    };
   }, [headers]);
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     fetchAll()
-      .then(({ s, w, r }) => {
+      .then(({ s, w, d, r }) => {
         if (cancelled) return;
         setSummary(s);
-        setWeeks(w.weeks || []);
-        setMaxWeek(w.max || 0);
+        setWeekly(w);
+        setDaily(d);
         setRides(r);
       })
       .catch(() => { if (!cancelled) setError("Could not load your earnings."); });
@@ -147,7 +160,10 @@ export default function EarningsPage() {
 
   const up = summary.change_pct >= 0;
   const hasEarnings = summary.rides_paid > 0;
-  const axisMax = niceAxisMax(maxWeek);
+  const active = period === "week" ? weekly : daily;
+  const buckets = active.buckets;
+  const maxBucket = active.max;
+  const axisMax = niceAxisMax(maxBucket);
 
   return (
     <div>
@@ -218,14 +234,31 @@ export default function EarningsPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
                       marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
           <div>
-            <h2 style={{ fontSize: "1.05rem" }}>Weekly Earnings</h2>
+            <h2 style={{ fontSize: "1.05rem" }}>
+              {period === "week" ? "Weekly" : "Daily"} Earnings
+            </h2>
             <p style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginTop: 2 }}>
-              Last 8 weeks · Asia/Dhaka · week starts Monday
+              {period === "week"
+                ? "Last 8 weeks · Asia/Dhaka · week starts Monday"
+                : "Last 14 days · Asia/Dhaka"}
             </p>
           </div>
-          <button onClick={() => setAsTable(v => !v)} className="btn btn-ghost btn-sm">
-            {asTable ? "Show chart" : "Show table"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["day", "week"] as Period[]).map(p2 => (
+                <button
+                  key={p2}
+                  onClick={() => setPeriod(p2)}
+                  className={`btn btn-sm ${period === p2 ? "btn-primary" : "btn-ghost"}`}
+                >
+                  {p2 === "day" ? "Daily" : "Weekly"}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setAsTable(v => !v)} className="btn btn-ghost btn-sm">
+              {asTable ? "Show chart" : "Show table"}
+            </button>
+          </div>
         </div>
 
         {!hasEarnings ? (
@@ -238,12 +271,12 @@ export default function EarningsPage() {
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
-                <tr><th>Week beginning</th><th style={{ textAlign: "right" }}>Rides</th><th style={{ textAlign: "right" }}>Earned</th></tr>
+                <tr><th>{period === "week" ? "Week beginning" : "Day"}</th><th style={{ textAlign: "right" }}>Rides</th><th style={{ textAlign: "right" }}>Earned</th></tr>
               </thead>
               <tbody>
-                {weeks.map(w => (
-                  <tr key={w.week_start}>
-                    <td>{w.label}{w.is_current && " (current)"}</td>
+                {buckets.map(w => (
+                  <tr key={w.period_start}>
+                    <td>{w.label}{w.is_current && (period === "week" ? " (current)" : " (today)")}</td>
                     <td style={{ textAlign: "right" }}>{w.rides}</td>
                     <td style={{ textAlign: "right", fontWeight: 600 }}>{taka(w.amount)}</td>
                   </tr>
@@ -267,13 +300,13 @@ export default function EarningsPage() {
 
               {/* Bars: anchored to the baseline, 4px rounded data-end, 2px gap */}
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", gap: 2 }}>
-                {weeks.map((w, i) => {
+                {buckets.map((w, i) => {
                   const pct = axisMax > 0 ? (w.amount / axisMax) * 100 : 0;
-                  const isPeak = w.amount === maxWeek && maxWeek > 0;
+                  const isPeak = w.amount === maxBucket && maxBucket > 0;
                   const active = hover === i;
                   return (
                     <div
-                      key={w.week_start}
+                      key={w.period_start}
                       onMouseEnter={() => setHover(i)}
                       onMouseLeave={() => setHover(null)}
                       style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end",
@@ -308,7 +341,7 @@ export default function EarningsPage() {
                           }}
                         >
                           <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>
-                            Week of {w.label}
+                            {period === "week" ? `Week of ${w.label}` : w.label}
                           </div>
                           <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)" }}>
                             {taka(w.amount)}
@@ -326,8 +359,8 @@ export default function EarningsPage() {
 
             {/* X labels */}
             <div style={{ display: "flex", gap: 2, marginLeft: 54, marginTop: 8 }}>
-              {weeks.map(w => (
-                <div key={w.week_start} style={{ flex: 1, textAlign: "center", fontSize: "0.68rem",
+              {buckets.map(w => (
+                <div key={w.period_start} style={{ flex: 1, textAlign: "center", fontSize: "0.68rem",
                        color: w.is_current ? "var(--text-secondary)" : "var(--text-tertiary)",
                        fontWeight: w.is_current ? 700 : 400 }}>
                   {w.label}

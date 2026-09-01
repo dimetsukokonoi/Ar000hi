@@ -196,45 +196,86 @@ def earnings_summary(user_id: str = Depends(get_current_user_id)):
     }
 
 
-@router.get("/weekly")
-def earnings_weekly(weeks: int = Query(8, ge=1, le=26),
-                    user_id: str = Depends(get_current_user_id)):
-    """Earnings per ISO week (Dhaka time), oldest first, with empty weeks kept.
+def _bucket_series(credits, count: int, step_days: int, label_fmt: str) -> list[dict]:
+    """Bucket ride credits into `count` consecutive periods ending with the
+    current one, in Dhaka time, oldest first.
 
-    Gaps are preserved deliberately: dropping a zero week would compress the time
-    axis and make an idle stretch look like continuous activity.
+    Shared by /weekly (step 7) and /daily (step 1) so the two views can never
+    drift apart. Empty periods are KEPT: dropping a zero bucket would compress
+    the time axis and make an idle stretch look like continuous activity.
     """
-    conn = get_db()
-    credits = _credits(conn, user_id)
-    conn.close()
-
     now_bd = dt.now(BD_TZ)
-    current_start = _week_start(now_bd)
+    anchor = _week_start(now_bd) if step_days == 7 else now_bd.replace(
+        hour=0, minute=0, second=0, microsecond=0)
+
+    def bucket_start(when: dt) -> dt:
+        if step_days == 7:
+            return _week_start(when)
+        return when.replace(hour=0, minute=0, second=0, microsecond=0)
+
     buckets: dict[str, dict] = {}
-    for i in range(weeks - 1, -1, -1):
-        start = current_start - timedelta(days=7 * i)
+    for i in range(count - 1, -1, -1):
+        start = anchor - timedelta(days=step_days * i)
         buckets[start.date().isoformat()] = {
-            "week_start": start.date().isoformat(),
-            "label": start.strftime("%d %b"),
+            "period_start": start.date().isoformat(),
+            "label": start.strftime(label_fmt),
             "amount": 0.0,
             "rides": 0,
             "is_current": i == 0,
         }
 
-    earliest = current_start - timedelta(days=7 * (weeks - 1))
+    earliest = anchor - timedelta(days=step_days * (count - 1))
     for c in credits:
         when = _to_bd(c["created_at"])
         if not when or when < earliest:
             continue
-        key = _week_start(when).date().isoformat()
+        key = bucket_start(when).date().isoformat()
         if key in buckets:
             buckets[key]["amount"] = round(buckets[key]["amount"] + c["amount"], 2)
             buckets[key]["rides"] += 1
 
-    series = list(buckets.values())
+    return list(buckets.values())
+
+
+@router.get("/weekly")
+def earnings_weekly(weeks: int = Query(8, ge=1, le=26),
+                    user_id: str = Depends(get_current_user_id)):
+    """Earnings per week (Monday start, Dhaka time), oldest first."""
+    conn = get_db()
+    credits = _credits(conn, user_id)
+    conn.close()
+
+    series = _bucket_series(credits, weeks, 7, "%d %b")
     amounts = [b["amount"] for b in series]
     return {
+        # `weeks` kept for backwards compatibility; `buckets` is the shared key.
         "weeks": series,
+        "buckets": series,
+        "period": "week",
+        "max": max(amounts) if amounts else 0.0,
+        "total": round(sum(amounts), 2),
+        "timezone": "Asia/Dhaka",
+    }
+
+
+@router.get("/daily")
+def earnings_daily(days: int = Query(14, ge=1, le=90),
+                   user_id: str = Depends(get_current_user_id)):
+    """Earnings per calendar day (Dhaka time), oldest first.
+
+    Expect this view to look sparse: a student driver runs a handful of rides a
+    week, so most days are legitimately zero.
+    """
+    conn = get_db()
+    credits = _credits(conn, user_id)
+    conn.close()
+
+    series = _bucket_series(credits, days, 1, "%d %b")
+    amounts = [b["amount"] for b in series]
+    return {
+        "days": series,
+        "buckets": series,
+        "period": "day",
         "max": max(amounts) if amounts else 0.0,
         "total": round(sum(amounts), 2),
         "timezone": "Asia/Dhaka",
