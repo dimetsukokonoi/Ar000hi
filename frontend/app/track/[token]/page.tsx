@@ -62,7 +62,7 @@ export default function SharedTrackingPage() {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><span className="spinner spinner-lg" /></div>;
   }
 
-  const latest = data.latest || (data.points.length > 0 ? data.points[data.points.length - 1] : { lat: 23.7781, lng: 90.4042 });
+  const latest = data.latest || (data.points.length > 0 ? data.points[data.points.length - 1] : { lat: 23.7745, lng: 90.4253 });
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>

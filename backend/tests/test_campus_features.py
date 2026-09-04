@@ -63,8 +63,9 @@ def test_campus_hotspots():
     assert "academic" in categories
     assert "transit_hub" in categories
     gate1 = next(h for h in hotspots if h["id"] == "gate 1")
-    assert gate1["name"] == "Gate 1 (Main Entrance)"
-    assert gate1["lat"] == 23.7800
+    assert gate1["name"] == "Gate 1 (Main Entrance - Pragati Sarani)"
+    assert gate1["lat"] == 23.7745
+    assert gate1["lng"] == 90.4255
 
 
 def test_female_only_mode_creation_and_joining():
@@ -233,7 +234,6 @@ def test_scheduled_ride_validation():
             "source": "Gulshan",
             "destination": "Gate 1",
             "base_fare": 100.0,
-            "total_seats": 3,
             "scheduled_at": past_time,
             "female_only": False
         },
@@ -243,5 +243,40 @@ def test_scheduled_ride_validation():
     assert "Scheduled time must be in the future" in res.json()["detail"]
 
 
+def test_badda_campus_zone_proximity_matching():
+    """Test 6: Campus Zone Proximity matching on Merul Badda campus."""
+    future_time = (dt.utcnow() + timedelta(hours=4)).isoformat()
+    # Driver creates ride ending at Gate 1 (Pragati Sarani)
+    res = client.post(
+        "/api/rides",
+        json={
+            "source": "Aftabnagar",
+            "destination": "Gate 1",
+            "base_fare": 60.0,
+            "total_seats": 3,
+            "scheduled_at": future_time,
+            "female_only": False,
+            "stops": []
+        },
+        headers=male_driver_h
+    )
+    assert res.status_code == 200
+    ride_id = res.json()["ride_id"]
+
+    # Student searches for ride from Hatirjheel Ghat to Library (both adjacent Badda campus points)
+    match_res = client.get(
+        "/api/rides/match?pickup=Hatirjheel%20Ghat&dropoff=Library",
+        headers=female_rider_h
+    )
+    assert match_res.status_code == 200
+    matches = match_res.json()
+    badda_match = next((m for m in matches if m["id"] == ride_id), None)
+    assert badda_match is not None
+    assert badda_match["match_score"] >= 70
+    reasons_str = " ".join(badda_match["match_reasons"])
+    assert "BRACU Campus Zone Drop-off" in reasons_str or "Near Drop-off" in reasons_str
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
+

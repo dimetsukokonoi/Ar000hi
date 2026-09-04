@@ -30,7 +30,7 @@ const TrackingMap = dynamic(() => import("@/components/TrackingMap"), { ssr: fal
 export default function DashboardPage() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [points, setPoints] = useState<TrackingPoint[]>([]);
-  const [currentPos, setCurrentPos] = useState<{ lat: number; lng: number }>({ lat: 23.7781, lng: 90.4042 });
+  const [currentPos, setCurrentPos] = useState<{ lat: number; lng: number }>({ lat: 23.7745, lng: 90.4253 });
   const [tracking, setTracking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sosModal, setSosModal] = useState(false);

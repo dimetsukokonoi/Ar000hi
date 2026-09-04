@@ -22,94 +22,168 @@ from app import wallet_service as ws
 router = APIRouter()
 
 HOTSPOTS = [
+    # --- BRACU New Campus in Merul Badda ---
     {
         "id": "gate 1",
-        "name": "Gate 1 (Main Entrance)",
+        "name": "Gate 1 (Main Entrance - Pragati Sarani)",
         "category": "campus_gate",
-        "lat": 23.7800,
-        "lng": 90.4100,
-        "description": "BRACU Main Gate 1 & Security Checkpoint",
+        "lat": 23.7745,
+        "lng": 90.4255,
+        "description": "BRACU Main Gate 1 & Front Plaza on Bir Uttam Rafiqul Islam Ave / Pragati Sarani",
         "popular": True,
     },
     {
         "id": "gate 2",
-        "name": "Gate 2 (West Wing)",
+        "name": "Gate 2 (Hatirjheel / West Walkway)",
         "category": "campus_gate",
-        "lat": 23.7765,
-        "lng": 90.4070,
-        "description": "West Gate pickup area near cafeteria",
-        "popular": False,
+        "lat": 23.7741,
+        "lng": 90.4245,
+        "description": "West entrance facing Hatirjheel promenade and lake link road",
+        "popular": True,
     },
     {
         "id": "gate 3",
-        "name": "Gate 3 (East Wing)",
+        "name": "Gate 3 (Aftabnagar / South Gate)",
         "category": "campus_gate",
-        "lat": 23.7792,
-        "lng": 90.4120,
-        "description": "East Gate & Bike Parking zone",
+        "lat": 23.7738,
+        "lng": 90.4262,
+        "description": "South student drop-off & parking gate near Aftabnagar link",
         "popular": False,
     },
     {
-        "id": "library",
-        "name": "Ayesha Abed Library",
+        "id": "academic building",
+        "name": "BRACU Main Academic Complex",
         "category": "academic",
-        "lat": 23.7781,
-        "lng": 90.4042,
-        "description": "Central Library & Study Plaza",
+        "lat": 23.7746,
+        "lng": 90.4252,
+        "description": "13-story green sustainable mega building & lecture halls",
+        "popular": True,
+    },
+    {
+        "id": "library",
+        "name": "Ayesha Abed Library (Level 3-4)",
+        "category": "academic",
+        "lat": 23.7747,
+        "lng": 90.4250,
+        "description": "Central university library and quiet study commons",
         "popular": True,
     },
     {
         "id": "cafeteria",
-        "name": "Main Cafeteria & Lounge",
+        "name": "Main Cafeteria & Food Court",
         "category": "academic",
-        "lat": 23.7770,
-        "lng": 90.4050,
-        "description": "Cafeteria outdoor plaza & student hangout",
+        "lat": 23.7744,
+        "lng": 90.4251,
+        "description": "Spacious multi-cuisine food court & student lounge",
         "popular": True,
     },
     {
-        "id": "ub building",
-        "name": "UB Building (UB01-UB07)",
+        "id": "auditorium",
+        "name": "BRACU Grand Auditorium & Gallery",
         "category": "academic",
-        "lat": 23.7788,
-        "lng": 90.4060,
-        "description": "University Building classrooms & labs",
+        "lat": 23.7743,
+        "lng": 90.4254,
+        "description": "Central auditorium, multipurpose hall & exhibition gallery",
+        "popular": False,
+    },
+    {
+        "id": "sports complex",
+        "name": "Indoor Sports & Recreation Complex",
+        "category": "academic",
+        "lat": 23.7749,
+        "lng": 90.4253,
+        "description": "Indoor gymnasium, badminton courts & rooftop sports arena",
+        "popular": False,
+    },
+    # --- Surrounding Transit Hubs & Student Residential Areas ---
+    {
+        "id": "aftabnagar",
+        "name": "Aftabnagar Main Gate (Block A)",
+        "category": "transit_hub",
+        "lat": 23.7730,
+        "lng": 90.4280,
+        "description": "Directly across Pragati Sarani — major student residential hub & EWU link",
         "popular": True,
     },
     {
-        "id": "residential",
-        "name": "Residential Campus Hub",
-        "category": "residential",
-        "lat": 23.7820,
-        "lng": 90.4080,
-        "description": "Student dormitories and housing area",
+        "id": "hatirjheel ghat",
+        "name": "Hatirjheel Merul Badda Water Taxi Ghat",
+        "category": "transit_hub",
+        "lat": 23.7725,
+        "lng": 90.4230,
+        "description": "Water taxi terminal connecting to FDC, Niketan, Gulshan-1 & Rampura",
+        "popular": True,
+    },
+    {
+        "id": "rampura bridge",
+        "name": "Rampura Bridge / DIT Road",
+        "category": "transit_hub",
+        "lat": 23.7650,
+        "lng": 90.4240,
+        "description": "Major bus junction connecting to Malibagh, Kakrail, and South Dhaka",
+        "popular": True,
+    },
+    {
+        "id": "banasree",
+        "name": "Banasree (Block A / Rampura Link)",
+        "category": "transit_hub",
+        "lat": 23.7600,
+        "lng": 90.4350,
+        "description": "Key student residential area across Rampura canal",
+        "popular": False,
+    },
+    {
+        "id": "notun bazar",
+        "name": "Notun Bazar / Madani Ave (100 Feet)",
+        "category": "transit_hub",
+        "lat": 23.7930,
+        "lng": 90.4260,
+        "description": "Major transit hub towards Baridhara, Kuril, and Purbachal 300ft",
+        "popular": True,
+    },
+    {
+        "id": "gulshan 1",
+        "name": "Gulshan-1 Circle (via Police Plaza)",
+        "category": "transit_hub",
+        "lat": 23.7790,
+        "lng": 90.4180,
+        "description": "Connected via Gudara Ghat / Hatirjheel link road to Badda",
+        "popular": True,
+    },
+    {
+        "id": "gulshan 2",
+        "name": "Gulshan-2 Circle",
+        "category": "transit_hub",
+        "lat": 23.7925,
+        "lng": 90.4165,
+        "description": "Diplomatic zone & transit corridor",
         "popular": False,
     },
     {
         "id": "mohakhali",
-        "name": "Mohakhali Wireless Gate",
+        "name": "Mohakhali Wireless / Old Campus Hub",
         "category": "transit_hub",
-        "lat": 23.7700,
-        "lng": 90.4020,
-        "description": "Major transit point connecting to BRACU",
+        "lat": 23.7775,
+        "lng": 90.4050,
+        "description": "Connecting to Old Mohakhali campus & Western Dhaka routes",
         "popular": True,
     },
     {
-        "id": "banani",
-        "name": "Banani Road 11 / Station",
+        "id": "kuril",
+        "name": "Kuril Flyover / Bishwa Road",
         "category": "transit_hub",
-        "lat": 23.7760,
-        "lng": 90.4100,
-        "description": "Banani commercial and pickup zone",
+        "lat": 23.8180,
+        "lng": 90.4230,
+        "description": "Gateway to Airport Road, Uttara, and North-Eastern universities",
         "popular": True,
     },
     {
-        "id": "gulshan",
-        "name": "Gulshan-1 Circle",
+        "id": "bashundhara",
+        "name": "Bashundhara R/A Gate / Jamuna Future Park",
         "category": "transit_hub",
-        "lat": 23.7900,
-        "lng": 90.4100,
-        "description": "Gulshan roundabout & bus stoppage",
+        "lat": 23.8150,
+        "lng": 90.4250,
+        "description": "Pragati Sarani northern carpool corridor",
         "popular": True,
     },
     {
@@ -133,9 +207,50 @@ HOTSPOTS = [
 ]
 
 ZONES = {h["id"]: (h["lat"], h["lng"]) for h in HOTSPOTS}
-ZONES["cafe"] = ZONES["cafeteria"]
-ZONES["ub"] = ZONES["ub building"]
-ZONES["residence"] = ZONES["residential"]
+# Common aliases and synonyms
+ZONES["gate 1"] = (23.7745, 90.4255)
+ZONES["gate 2"] = (23.7741, 90.4245)
+ZONES["gate 3"] = (23.7738, 90.4262)
+ZONES["main gate"] = (23.7745, 90.4255)
+ZONES["cafe"] = (23.7744, 90.4251)
+ZONES["cafeteria"] = (23.7744, 90.4251)
+ZONES["food court"] = (23.7744, 90.4251)
+ZONES["library"] = (23.7747, 90.4250)
+ZONES["ayesha abed library"] = (23.7747, 90.4250)
+ZONES["academic building"] = (23.7746, 90.4252)
+ZONES["ub building"] = (23.7746, 90.4252)
+ZONES["ub"] = (23.7746, 90.4252)
+ZONES["auditorium"] = (23.7743, 90.4254)
+ZONES["sports complex"] = (23.7749, 90.4253)
+ZONES["gym"] = (23.7749, 90.4253)
+ZONES["aftabnagar"] = (23.7730, 90.4280)
+ZONES["hatirjheel"] = (23.7725, 90.4230)
+ZONES["hatirjheel ghat"] = (23.7725, 90.4230)
+ZONES["water taxi"] = (23.7725, 90.4230)
+ZONES["rampura"] = (23.7650, 90.4240)
+ZONES["rampura bridge"] = (23.7650, 90.4240)
+ZONES["banasree"] = (23.7600, 90.4350)
+ZONES["notun bazar"] = (23.7930, 90.4260)
+ZONES["madani avenue"] = (23.7930, 90.4260)
+ZONES["gulshan 1"] = (23.7790, 90.4180)
+ZONES["gulshan 2"] = (23.7925, 90.4165)
+ZONES["mohakhali"] = (23.7775, 90.4050)
+ZONES["kuril"] = (23.8180, 90.4230)
+ZONES["bashundhara"] = (23.8150, 90.4250)
+ZONES["dhanmondi"] = (23.7450, 90.3800)
+ZONES["mirpur"] = (23.8100, 90.3500)
+
+# Logical campus zone clusters for smart matching
+CAMPUS_CLUSTERS = {
+    "badda_campus": {"gate 1", "gate 2", "gate 3", "main gate", "academic building", "library", "ayesha abed library", "cafeteria", "cafe", "food court", "auditorium", "sports complex", "gym", "ub building", "ub"},
+    "aftabnagar_lake": {"aftabnagar", "hatirjheel", "hatirjheel ghat", "water taxi"},
+    "rampura_banasree": {"rampura", "rampura bridge", "banasree"},
+    "gulshan_corridor": {"gulshan 1", "gulshan 2", "police plaza"},
+    "pragati_sarani_north": {"notun bazar", "madani avenue", "kuril", "bashundhara", "jamuna"},
+    "mohakhali_link": {"mohakhali", "old campus"},
+    "dhanmondi_hub": {"dhanmondi"},
+    "mirpur_hub": {"mirpur"},
+}
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -474,9 +589,12 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str = Depends(get_curr
 @router.get("/match")
 def match_rides(
     source: str | None = None,
+    pickup: str | None = None,
     destination: str | None = None,
+    dropoff: str | None = None,
     scheduled_date: str | None = None,
     scheduled_time: str | None = None,
+    class_time: str | None = None,
     female_only: bool = False,
     user_id: str = Depends(get_current_user_id)
 ):
@@ -484,6 +602,10 @@ def match_rides(
     Matches riders with open rides heading to their destination or passing through their intermediate stops.
     Supports proximity zone matching, class schedule time-flex matching, and female-only filtering.
     """
+    effective_source = (source or pickup or "").strip()
+    effective_destination = (destination or dropoff or "").strip()
+    effective_time = (scheduled_time or class_time or "").strip()
+
     conn = get_db()
     user = conn.execute("SELECT gender FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
@@ -521,8 +643,8 @@ def match_rides(
 
     conn.close()
 
-    norm_src = source.strip().lower() if source else ""
-    norm_dst = destination.strip().lower() if destination else ""
+    norm_src = effective_source.lower()
+    norm_dst = effective_destination.lower()
 
     matched_results = []
 
@@ -552,14 +674,26 @@ def match_rides(
             score += 50
             reasons.append("Exact Pickup Point")
         else:
-            # Proximity check
+            # Check cluster membership
+            same_cluster = False
+            for cluster_name, cluster_places in CAMPUS_CLUSTERS.items():
+                if norm_src in cluster_places and ride_src in cluster_places:
+                    same_cluster = True
+                    break
+
             s_coord = ZONES.get(norm_src)
             rs_coord = ZONES.get(ride_src)
-            if s_coord and rs_coord:
+            if same_cluster or (s_coord and rs_coord and _haversine_km(s_coord, rs_coord) <= 0.4):
+                score += 45
+                reasons.append("Same Campus Pickup Zone")
+            elif s_coord and rs_coord:
                 dist = _haversine_km(s_coord, rs_coord)
-                if dist <= 1.5:
+                if dist <= 1.2:
                     score += 35
-                    reasons.append(f"Nearby Pickup Zone ({round(dist, 1)}km)")
+                    reasons.append(f"Nearby Pickup ({round(dist, 1)}km)")
+                elif dist <= 2.5:
+                    score += 20
+                    reasons.append(f"Connecting Corridor ({round(dist, 1)}km)")
                 else:
                     score += 0
             else:
@@ -576,40 +710,51 @@ def match_rides(
             matched_stop = next((s["place"] for s in r_stops if s["place"].strip().lower() == norm_dst), norm_dst)
             reasons.append(f"Multi-Stop Route Match: {matched_stop}")
         else:
-            # Proximity check across destination + all stops
+            # Proximity and cluster check across destination + all stops
             d_coord = ZONES.get(norm_dst)
             best_dist = 999.0
             best_place = ""
-            if d_coord:
-                for place_name in [ride_dst, *stop_names]:
-                    p_coord = ZONES.get(place_name)
-                    if p_coord:
-                        d = _haversine_km(d_coord, p_coord)
-                        if d < best_dist:
-                            best_dist = d
-                            best_place = place_name
-                if best_dist <= 1.5:
-                    score += 35
-                    reasons.append(f"Near Drop-off ({round(best_dist, 1)}km of {best_place.title()})")
-                else:
-                    score += 0
+            dest_matched_cluster = False
+
+            for place_name in [ride_dst, *stop_names]:
+                for cluster_name, cluster_places in CAMPUS_CLUSTERS.items():
+                    if norm_dst in cluster_places and place_name in cluster_places:
+                        dest_matched_cluster = True
+                        best_place = place_name
+                        break
+                p_coord = ZONES.get(place_name)
+                if d_coord and p_coord:
+                    d = _haversine_km(d_coord, p_coord)
+                    if d < best_dist:
+                        best_dist = d
+                        best_place = place_name
+
+            if dest_matched_cluster or best_dist <= 0.4:
+                score += 48
+                reasons.append(f"BRACU Campus Zone Drop-off ({best_place.title()})")
+            elif best_dist <= 1.2:
+                score += 35
+                reasons.append(f"Near Drop-off ({round(best_dist, 1)}km of {best_place.title()})")
+            elif best_dist <= 2.5:
+                score += 20
+                reasons.append(f"Nearby Corridor ({round(best_dist, 1)}km of {best_place.title()})")
             else:
-                score += 10
+                score += 0
 
         # Time & Class Schedule scoring
-        if scheduled_time or scheduled_date:
+        if effective_time or scheduled_date:
             if r["scheduled_at"]:
                 try:
                     r_dt = dt.fromisoformat(r["scheduled_at"].replace("Z", "+00:00"))
-                    if scheduled_time:
+                    if effective_time:
                         # Extract hour:minute
-                        req_parts = scheduled_time.split(":")
+                        req_parts = effective_time.split(":")
                         if len(req_parts) == 2:
                             req_h, req_m = int(req_parts[0]), int(req_parts[1])
                             diff_mins = abs((r_dt.hour * 60 + r_dt.minute) - (req_h * 60 + req_m))
                             if diff_mins <= 30:
                                 score += 15
-                                reasons.append(f"Class Time Match ({scheduled_time})")
+                                reasons.append(f"Class Time Match ({effective_time})")
                             elif diff_mins <= 60:
                                 score += 8
                                 reasons.append(f"Near Class Time (±{diff_mins}m)")

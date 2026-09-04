@@ -16,10 +16,10 @@ interface Hotspot {
 // The API returns each stop as an object ({place, sequence, status}); the
 // create-ride form and some older paths use plain strings. Accept either, so a
 // multi-stop ride does not crash the page.
-type RideStop = string | { place?: string; stop_name?: string };
+type RideStop = string | { place?: string; stop_name?: string; name?: string; id?: string };
 
 const stopPlace = (stop: RideStop): string =>
-  typeof stop === "string" ? stop : (stop?.place ?? stop?.stop_name ?? "");
+  typeof stop === "string" ? stop : (stop?.place ?? stop?.stop_name ?? stop?.name ?? stop?.id ?? "");
 
 // Feature 18: what cancelling would cost, previewed before anything happens.
 interface CancelQuote {
@@ -181,17 +181,21 @@ export default function RidesPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [me] = useState<MeInfo | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = localStorage.getItem("user");
-      return raw ? (JSON.parse(raw) as MeInfo) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [me, setMe] = useState<MeInfo | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  useEffect(() => {
+    const t = localStorage.getItem("token");
+    setToken(t);
+    const raw = localStorage.getItem("user");
+    if (raw) {
+      try {
+        setMe(JSON.parse(raw) as MeInfo);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
 
   const showNotice = (type: "success" | "error", text: string) => {
     setNotice({ type, text });
@@ -242,7 +246,45 @@ export default function RidesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMatchResults(data.matches || []);
+        const rawList = Array.isArray(data) ? data : (data.matches || []);
+        const normalized: MatchResult[] = rawList.map((item: any) => {
+          if (item.ride) {
+            return {
+              ride: item.ride,
+              match_score: item.match_score || item.score_percentage || 100,
+              score_percentage: item.score_percentage || item.match_score || 100,
+              reasons: item.reasons || item.match_reasons || [],
+              pickup_distance_km: item.pickup_distance_km || 0,
+              dropoff_distance_km: item.dropoff_distance_km || 0,
+              time_difference_mins: item.time_difference_mins ?? null,
+            };
+          }
+          return {
+            ride: {
+              id: item.id,
+              driver_id: item.driver_id,
+              driver_name: item.driver_name,
+              source: item.source,
+              destination: item.destination,
+              status: item.status,
+              distance_km: item.distance_km,
+              base_fare: item.base_fare,
+              surge_multiplier: item.surge_multiplier,
+              total_seats: item.total_seats,
+              available_seats: item.available_seats,
+              scheduled_at: item.scheduled_at,
+              female_only: item.female_only,
+              stops: item.stops,
+            },
+            match_score: item.match_score || 100,
+            score_percentage: item.match_score || 100,
+            reasons: item.match_reasons || item.reasons || [],
+            pickup_distance_km: 0,
+            dropoff_distance_km: 0,
+            time_difference_mins: null,
+          };
+        });
+        setMatchResults(normalized);
       } else {
         showNotice("error", data.detail || "Failed to find smart matches");
         setMatchResults([]);
@@ -959,28 +1001,28 @@ export default function RidesPage() {
                             >
                               ⚡ {result.score_percentage}% Match Score
                             </span>
-                            {result.ride.female_only && (
+                            {result.ride?.female_only && (
                               <span className="badge" style={{ background: "rgba(236, 72, 153, 0.2)", color: "#f472b6" }}>
                                 🌸 Female-Only
                               </span>
                             )}
                           </div>
                           <div style={{ fontWeight: 700, fontSize: "1.1rem", marginTop: 8 }}>
-                            📍 {getHotspotName(result.ride.source)} ➜ 🏁 {getHotspotName(result.ride.destination)}
+                            📍 {getHotspotName(result.ride?.source || "")} ➜ 🏁 {getHotspotName(result.ride?.destination || "")}
                           </div>
                           <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: 4 }}>
-                            Driver: <strong>{result.ride.driver_name}</strong> · Base Fare: ৳{result.ride.base_fare} · Available Seats: {result.ride.total_seats}
+                            Driver: <strong>{result.ride?.driver_name}</strong> · Base Fare: ৳{result.ride?.base_fare} · Available Seats: {result.ride?.total_seats}
                           </div>
                         </div>
 
-                        <button className="btn btn-primary" onClick={() => openJoinModal(result.ride)}>
+                        <button className="btn btn-primary" onClick={() => result.ride && openJoinModal(result.ride)}>
                           🚕 Join Ride
                         </button>
                       </div>
 
                       {/* Matching Reasons Tags */}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                        {result.reasons.map((reason, rIdx) => (
+                        {(result.reasons || []).map((reason, rIdx) => (
                           <span key={rIdx} className="badge badge-info" style={{ fontSize: "0.75rem", textTransform: "none" }}>
                             ✓ {reason}
                           </span>
