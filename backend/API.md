@@ -1,5 +1,9 @@
 # Arooohi Backend API — Ornab's Feature Modules
 
+Implementation layout: endpoint handlers now live in `app/controllers/`, business
+rules and SQL in `app/models/`, and PDF/HTML rendering in `app/views/`. Existing
+API URLs are unchanged. See the [MVC demonstration guide](../MVC_ARCHITECTURE.md).
+
 > Added by MD. Aminul Islam Ornab (2026-07-31) for the SRS features:
 > Trusted Contact Sharing (#12), Ride Cost Splitter (#5), Peak Hour Surge (#13),
 > Ride Chat (#15), Eco/Footprint Tracker (#20).

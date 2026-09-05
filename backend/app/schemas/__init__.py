@@ -1,0 +1,1 @@
+"""MVC schemas package."""

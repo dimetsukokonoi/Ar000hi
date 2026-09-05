@@ -10,16 +10,13 @@ import os
 import sys
 import uuid
 import pytest
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt, timedelta, timezone
 from fastapi.testclient import TestClient
 
 # Ensure backend root is on PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Use a test database
-os.environ["DATABASE_PATH"] = "/tmp/test_arooohi.db"
-if os.path.exists("/tmp/test_arooohi.db"):
-    os.remove("/tmp/test_arooohi.db")
+# tests/conftest.py selects a unique temporary database before app imports.
 
 from app.database import init_db, get_db
 from app.main import app
@@ -60,7 +57,9 @@ def test_campus_hotspots():
     assert len(hotspots) >= 8
     categories = {h["category"] for h in hotspots}
     assert "campus_gate" in categories
-    assert "academic" in categories
+    assert categories <= {"campus_gate", "academic", "transit_hub", "residential"}
+    assert len({h["id"] for h in hotspots}) == len(hotspots)
+    assert all(-90 <= h["lat"] <= 90 and -180 <= h["lng"] <= 180 for h in hotspots)
     assert "transit_hub" in categories
     gate1 = next(h for h in hotspots if h["id"] == "gate 1")
     assert gate1["name"] == "Gate 1 (Main Entrance - Pragati Sarani)"
@@ -185,6 +184,23 @@ def test_multi_stop_ride_and_status_tracking():
     assert split_data["breakdown"][0]["pickup_stop"] == "Banani"
     assert split_data["breakdown"][0]["dropoff_stop"] == "Mohakhali"
 
+    # Joining must use stops on the ride and travel forward along its route.
+    res = client.post(
+        f"/api/rides/{ride_id}/join",
+        json={"seats": 1, "pickup_stop": "Not on this route", "dropoff_stop": "Gate 1"},
+        headers=female_rider_h,
+    )
+    assert res.status_code == 400
+    assert "must be stops on this ride's route" in res.json()["detail"]
+
+    res = client.post(
+        f"/api/rides/{ride_id}/join",
+        json={"seats": 1, "pickup_stop": "Mohakhali", "dropoff_stop": "Banani"},
+        headers=female_rider_h,
+    )
+    assert res.status_code == 400
+    assert "Pickup must be before drop-off" in res.json()["detail"]
+
 
 def test_smart_matching_algorithm():
     """Test 4: Smart Matching algorithm with multi-stop and class schedule scoring."""
@@ -242,6 +258,37 @@ def test_scheduled_ride_validation():
     assert res.status_code == 400
     assert "Scheduled time must be in the future" in res.json()["detail"]
 
+    # The dashboard sends UTC timestamps ending in `Z`; these must not bypass
+    # the same future-time rule.
+    past_utc_time = (dt.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    res = client.post(
+        "/api/rides",
+        json={
+            "source": "Gulshan",
+            "destination": "Gate 1",
+            "base_fare": 100.0,
+            "scheduled_at": past_utc_time,
+            "female_only": False,
+        },
+        headers=male_driver_h,
+    )
+    assert res.status_code == 400
+    assert "Scheduled time must be in the future" in res.json()["detail"]
+
+    res = client.post(
+        "/api/rides",
+        json={
+            "source": "Gulshan",
+            "destination": "Gate 1",
+            "base_fare": 100.0,
+            "scheduled_at": "not-a-date",
+            "female_only": False,
+        },
+        headers=male_driver_h,
+    )
+    assert res.status_code == 400
+    assert "valid ISO-8601" in res.json()["detail"]
+
 
 def test_badda_campus_zone_proximity_matching():
     """Test 6: Campus Zone Proximity matching on Merul Badda campus."""
@@ -279,4 +326,3 @@ def test_badda_campus_zone_proximity_matching():
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
-

@@ -1,0 +1,1 @@
+"""MVC models package."""

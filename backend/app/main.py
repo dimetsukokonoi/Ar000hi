@@ -6,32 +6,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
-from app.database import init_db
-from app.routes.auth import router as auth_router
-from app.routes.drivers import router as drivers_router
-from app.routes.tracking import router as tracking_router
-from app.routes.sos import router as sos_router
-from app.routes.complaints import router as complaints_router
+from app.models.database import init_db
+from app.models.errors import DomainError
+from app.controllers.errors import domain_error_handler
+from app.controllers.health import router as health_router
+from app.controllers.auth import router as auth_router
+from app.controllers.drivers import router as drivers_router
+from app.controllers.tracking import router as tracking_router
+from app.controllers.sos import router as sos_router
+from app.controllers.complaints import router as complaints_router
 
 # Ornab: Trusted Contacts (#12), Rides core (#5 splitter), Surge (#13), Chat (#15), Eco (#20)
-from app.routes.contacts import router as contacts_router
-from app.routes.rides import router as rides_router
-from app.routes.surge import router as surge_router
-from app.routes.chat import router as chat_router
-from app.routes.eco import router as eco_router
+from app.controllers.contacts import router as contacts_router
+from app.controllers.rides import router as rides_router
+from app.controllers.surge import router as surge_router
+from app.controllers.chat import router as chat_router
+from app.controllers.eco import router as eco_router
 
 # Feature 9: Wallet & bKash Integration
-from app.routes.wallet import router as wallet_router
-from app.routes.bkash_checkout import router as bkash_checkout_router
+from app.controllers.wallet import router as wallet_router
+from app.controllers.bkash_checkout import router as bkash_checkout_router
 
 # Feature 16: Driver Earnings Dashboard
-from app.routes.earnings import router as earnings_router
+from app.controllers.earnings import router as earnings_router
 
 # Feature 10: Ride History & Receipt Log
-from app.routes.history import router as history_router
+from app.controllers.history import router as history_router
 
 # Feature 7: Driver Rating & Review
-from app.routes.reviews import router as reviews_router
+from app.controllers.reviews import router as reviews_router
 
 # Initialize database on startup
 init_db()
@@ -41,6 +44,7 @@ app = FastAPI(
     description="Student-to-student ride-sharing network — Backend API",
     version="1.0.0",
 )
+app.add_exception_handler(DomainError, domain_error_handler)
 
 # CORS — allow frontend
 app.add_middleware(
@@ -83,6 +87,4 @@ if os.getenv("DEMO_MODE", "1") == "1":
     app.include_router(bkash_checkout_router, prefix="/bkash", tags=["bKash (simulated)"])
 
 
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok", "app": "Arooohi API", "version": "1.0.0"}
+app.include_router(health_router)

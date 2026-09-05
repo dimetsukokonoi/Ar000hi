@@ -65,6 +65,7 @@ interface RideInfo {
   base_fare: number;
   surge_multiplier: number;
   total_seats: number;
+  available_seats?: number;
   scheduled_at?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
@@ -168,6 +169,7 @@ export default function RidesPage() {
   const [joinPickupStop, setJoinPickupStop] = useState("");
   const [joinDropoffStop, setJoinDropoffStop] = useState("");
   const [joinSeats, setJoinSeats] = useState(1);
+  const [bookingRide, setBookingRide] = useState(false);
 
   const [split, setSplit] = useState<Record<string, SplitInfo>>({});
   // Feature 18: Ride Cancellation Policy & Penalty
@@ -341,8 +343,19 @@ export default function RidesPage() {
   };
 
   const executeJoinRide = async () => {
-    if (!token || !joiningRide) return;
+    if (!token || !joiningRide || bookingRide) return;
+    const availableSeats = joiningRide.available_seats ?? joiningRide.total_seats;
+    if (availableSeats < 1) {
+      showNotice("error", "This carpool is already full.");
+      setJoiningRide(null);
+      return;
+    }
+    if (!Number.isInteger(joinSeats) || joinSeats < 1 || joinSeats > availableSeats) {
+      showNotice("error", `Choose between 1 and ${availableSeats} available seat${availableSeats === 1 ? "" : "s"}.`);
+      return;
+    }
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    setBookingRide(true);
     try {
       const res = await fetch(`${API}/rides/${joiningRide.id}/join`, {
         method: "POST",
@@ -355,7 +368,12 @@ export default function RidesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showNotice("success", data.message || "Seat requested successfully!");
+        showNotice(
+          "success",
+          data.requires_topup
+            ? `Seat requested. Add ৳${data.topup_amount} to your wallet before the ride ends.`
+            : (data.message || "Seat requested successfully!")
+        );
         setJoiningRide(null);
         reload();
       } else {
@@ -364,6 +382,8 @@ export default function RidesPage() {
     } catch (err) {
       showNotice("error", "Network error — could not join ride");
       console.error(err);
+    } finally {
+      setBookingRide(false);
     }
   };
 
@@ -680,9 +700,13 @@ export default function RidesPage() {
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!mine && ride.status === "scheduled" && (
-            <button className="btn btn-sm btn-primary" onClick={() => openJoinModal(ride)}>
-              🚕 Request Seat
-            </button>
+            ride.available_seats === 0 ? (
+              <span className="badge badge-danger">Full</span>
+            ) : (
+              <button className="btn btn-sm btn-primary" onClick={() => openJoinModal(ride)}>
+                🚕 Request Seat
+              </button>
+            )
           )}
           {/* Driver controls: accept requests, then start, then end (which pays out) */}
           {isDriver && ride.status !== "completed" && ride.status !== "cancelled" && (
@@ -1340,7 +1364,7 @@ export default function RidesPage() {
                   className="input"
                   type="number"
                   min="1"
-                  max={joiningRide.total_seats}
+                  max={joiningRide.available_seats ?? joiningRide.total_seats}
                   value={joinSeats}
                   onChange={e => setJoinSeats(Number(e.target.value))}
                 />
@@ -1350,8 +1374,8 @@ export default function RidesPage() {
                 <button className="btn btn-secondary" onClick={() => setJoiningRide(null)}>
                   Cancel
                 </button>
-                <button className="btn btn-primary" onClick={executeJoinRide}>
-                  Confirm & Request Seat
+                <button className="btn btn-primary" onClick={executeJoinRide} disabled={bookingRide}>
+                  {bookingRide ? "Requesting Seat..." : "Confirm & Request Seat"}
                 </button>
               </div>
             </div>

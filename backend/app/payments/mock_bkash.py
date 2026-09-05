@@ -58,7 +58,7 @@ class MockBkashGateway(PaymentGateway):
         Caller must hold self._lock. Returns the cache entry, or None if no such
         payment ever existed.
         """
-        from app.database import get_db
+        from app.models.database import get_db
         try:
             conn = get_db()
             row = conn.execute(

@@ -1,0 +1,3174 @@
+{
+  "components": {
+    "schemas": {
+      "AutoShareRequest": {
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "share_url": {
+            "title": "Share Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "share_url"
+        ],
+        "title": "AutoShareRequest",
+        "type": "object"
+      },
+      "Body_confirm_bkash_checkout__payment_id__confirm_post": {
+        "properties": {
+          "pin": {
+            "title": "Pin",
+            "type": "string"
+          },
+          "wallet_number": {
+            "title": "Wallet Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wallet_number",
+          "pin"
+        ],
+        "title": "Body_confirm_bkash_checkout__payment_id__confirm_post",
+        "type": "object"
+      },
+      "Body_submit_driver_verification_api_drivers_verify_post": {
+        "properties": {
+          "license_document": {
+            "format": "binary",
+            "title": "License Document",
+            "type": "string"
+          },
+          "nid_document": {
+            "format": "binary",
+            "title": "Nid Document",
+            "type": "string"
+          },
+          "vehicle_model": {
+            "title": "Vehicle Model",
+            "type": "string"
+          },
+          "vehicle_plate": {
+            "title": "Vehicle Plate",
+            "type": "string"
+          },
+          "vehicle_registration": {
+            "format": "binary",
+            "title": "Vehicle Registration",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "title": "Vehicle Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_type",
+          "vehicle_model",
+          "vehicle_plate",
+          "nid_document",
+          "license_document",
+          "vehicle_registration"
+        ],
+        "title": "Body_submit_driver_verification_api_drivers_verify_post",
+        "type": "object"
+      },
+      "CancelRideRequest": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "CancelRideRequest",
+        "type": "object"
+      },
+      "ContactRequest": {
+        "properties": {
+          "contact_email": {
+            "default": "",
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "contact_name": {
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "contact_phone": {
+            "title": "Contact Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact_name",
+          "contact_phone"
+        ],
+        "title": "ContactRequest",
+        "type": "object"
+      },
+      "CreateComplaintRequest": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "reported_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Id"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "subject",
+          "description"
+        ],
+        "title": "CreateComplaintRequest",
+        "type": "object"
+      },
+      "CreateRideRequest": {
+        "properties": {
+          "base_fare": {
+            "title": "Base Fare",
+            "type": "number"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "female_only": {
+            "default": false,
+            "title": "Female Only",
+            "type": "boolean"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "stops": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Stops",
+            "type": "array"
+          },
+          "total_seats": {
+            "default": 4,
+            "title": "Total Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "base_fare"
+        ],
+        "title": "CreateRideRequest",
+        "type": "object"
+      },
+      "EndRideRequest": {
+        "properties": {
+          "distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Km"
+          }
+        },
+        "title": "EndRideRequest",
+        "type": "object"
+      },
+      "ExecuteRequest": {
+        "properties": {
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_id"
+        ],
+        "title": "ExecuteRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JoinRideRequest": {
+        "properties": {
+          "dropoff_stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropoff Stop"
+          },
+          "pickup_stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Stop"
+          },
+          "seats": {
+            "default": 1,
+            "title": "Seats",
+            "type": "integer"
+          }
+        },
+        "title": "JoinRideRequest",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "phone",
+          "password",
+          "gender"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
+      "ResendOTPRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ResendOTPRequest",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "reviewee_id": {
+            "title": "Reviewee Id",
+            "type": "string"
+          },
+          "ride_id": {
+            "title": "Ride Id",
+            "type": "string"
+          },
+          "stars": {
+            "title": "Stars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ride_id",
+          "reviewee_id",
+          "stars"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
+      "SOSRequest": {
+        "properties": {
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "SOSRequest",
+        "type": "object"
+      },
+      "TopUpRequest": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "TopUpRequest",
+        "type": "object"
+      },
+      "TrackingPointRequest": {
+        "properties": {
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lng": {
+            "title": "Lng",
+            "type": "number"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "lat",
+          "lng"
+        ],
+        "title": "TrackingPointRequest",
+        "type": "object"
+      },
+      "UpdateComplaintRequest": {
+        "properties": {
+          "admin_notes": {
+            "default": "",
+            "title": "Admin Notes",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "UpdateComplaintRequest",
+        "type": "object"
+      },
+      "UpdateStopStatusRequest": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "UpdateStopStatusRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyOTPRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "VerifyOTPRequest",
+        "type": "object"
+      },
+      "WithdrawRequest": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "wallet_number": {
+            "default": "",
+            "title": "Wallet Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "WithdrawRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Student-to-student ride-sharing network — Backend API",
+    "title": "Arooohi API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "description": "Login with BRACU email and password.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "description": "Get current authenticated user's info.",
+        "operationId": "get_current_user_api_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Current User",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "description": "Register a new student — BRACU email only.\n\nNotes:\n- This module remains part of the shared Sprint-1 authentication foundation.\n- Ornab's Sprint-2 work depends on the verified BRACU identity gate.",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/resend-otp": {
+      "post": {
+        "description": "Resend OTP to a registered but unverified email.\n\nImprovement note:\n- Normalizes the email before lookup.\n- Reuses the pending verification flow, which is safer for the shared student-auth flow.\n- Now takes a Pydantic model instead of a raw dict (consistency + validation).",
+        "operationId": "resend_otp_api_auth_resend_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendOTPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Otp",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "description": "Verify OTP code sent during registration.",
+        "operationId": "verify_otp_api_auth_verify_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOTPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Otp",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/complaints/": {
+      "get": {
+        "description": "Get complaints — own complaints for users, all complaints for admin.",
+        "operationId": "get_complaints_api_complaints__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Complaints",
+        "tags": [
+          "Complaints"
+        ]
+      },
+      "post": {
+        "description": "File a new complaint.\n\nImprovement note:\n- This shared admin moderation API is now stricter about complaint content before it reaches the moderator queue.",
+        "operationId": "create_complaint_api_complaints__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateComplaintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Complaint",
+        "tags": [
+          "Complaints"
+        ]
+      }
+    },
+    "/api/complaints/stats": {
+      "get": {
+        "description": "Admin: Get complaint statistics.",
+        "operationId": "get_complaint_stats_api_complaints_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Complaint Stats",
+        "tags": [
+          "Complaints"
+        ]
+      }
+    },
+    "/api/complaints/{complaint_id}": {
+      "patch": {
+        "description": "Admin: Update complaint status and add notes.",
+        "operationId": "update_complaint_api_complaints__complaint_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "complaint_id",
+            "required": true,
+            "schema": {
+              "title": "Complaint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateComplaintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Complaint",
+        "tags": [
+          "Complaints"
+        ]
+      }
+    },
+    "/api/contacts": {
+      "get": {
+        "description": "List the current user's trusted contacts.",
+        "operationId": "list_contacts_api_contacts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Contacts",
+        "tags": [
+          "Trusted Contacts"
+        ]
+      },
+      "post": {
+        "description": "Add a trusted contact for the current user.",
+        "operationId": "add_contact_api_contacts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Contact",
+        "tags": [
+          "Trusted Contacts"
+        ]
+      }
+    },
+    "/api/contacts/auto-share": {
+      "post": {
+        "description": "Auto-share ride/live-tracking details to all trusted contacts.\n\nImprovement note:\n- The module remains a demo-safe integration point for trusted-contact sharing.\n- The share is now PERSISTED to `contact_shares` (auditable history, see\n  GET /api/contacts/shares) in addition to the console log.\n- Production should replace the console delivery with provider-backed SMS/email/push.",
+        "operationId": "auto_share_api_contacts_auto_share_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auto Share",
+        "tags": [
+          "Trusted Contacts"
+        ]
+      }
+    },
+    "/api/contacts/shares": {
+      "get": {
+        "description": "Share history for the current user (Feature 12: auditable auto-share log).",
+        "operationId": "list_shares_api_contacts_shares_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Shares",
+        "tags": [
+          "Trusted Contacts"
+        ]
+      }
+    },
+    "/api/contacts/{contact_id}": {
+      "delete": {
+        "description": "Remove a trusted contact (owner only).",
+        "operationId": "remove_contact_api_contacts__contact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contact_id",
+            "required": true,
+            "schema": {
+              "title": "Contact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Contact",
+        "tags": [
+          "Trusted Contacts"
+        ]
+      }
+    },
+    "/api/drivers/pending": {
+      "get": {
+        "description": "Admin: driver verification requests, filterable by status.\n\nFix (PROJECT_PLAN.md §6.2): the endpoint was misnamed — it returned ALL statuses.\nNow it defaults to `pending` (matching the name) and supports\n`?status=all|pending|approved|rejected` for the admin review UI.",
+        "operationId": "get_pending_drivers_api_drivers_pending_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pending Drivers",
+        "tags": [
+          "Driver Verification"
+        ]
+      }
+    },
+    "/api/drivers/status": {
+      "get": {
+        "description": "Get the current driver verification status.",
+        "operationId": "get_driver_status_api_drivers_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Driver Status",
+        "tags": [
+          "Driver Verification"
+        ]
+      }
+    },
+    "/api/drivers/verify": {
+      "post": {
+        "description": "Submit driver documents for verification.",
+        "operationId": "submit_driver_verification_api_drivers_verify_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_driver_verification_api_drivers_verify_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Driver Verification",
+        "tags": [
+          "Driver Verification"
+        ]
+      }
+    },
+    "/api/drivers/{profile_id}/review": {
+      "patch": {
+        "description": "Admin: Approve or reject a driver application.",
+        "operationId": "review_driver_api_drivers__profile_id__review_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Driver",
+        "tags": [
+          "Driver Verification"
+        ]
+      }
+    },
+    "/api/earnings/daily": {
+      "get": {
+        "description": "Earnings per calendar day (Dhaka time), oldest first.\n\nExpect this view to look sparse: a student driver runs a handful of rides a\nweek, so most days are legitimately zero.",
+        "operationId": "earnings_daily_api_earnings_daily_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Earnings Daily",
+        "tags": [
+          "Driver Earnings"
+        ]
+      }
+    },
+    "/api/earnings/rides": {
+      "get": {
+        "description": "Per-ride earnings, newest first, with unsettled rides flagged.",
+        "operationId": "earnings_rides_api_earnings_rides_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Earnings Rides",
+        "tags": [
+          "Driver Earnings"
+        ]
+      }
+    },
+    "/api/earnings/summary": {
+      "get": {
+        "description": "Headline figures: lifetime net, ride count, this week vs last, payout ready.",
+        "operationId": "earnings_summary_api_earnings_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Earnings Summary",
+        "tags": [
+          "Driver Earnings"
+        ]
+      }
+    },
+    "/api/earnings/weekly": {
+      "get": {
+        "description": "Earnings per week (Monday start, Dhaka time), oldest first.",
+        "operationId": "earnings_weekly_api_earnings_weekly_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "weeks",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 26,
+              "minimum": 1,
+              "title": "Weeks",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Earnings Weekly",
+        "tags": [
+          "Driver Earnings"
+        ]
+      }
+    },
+    "/api/eco/leaderboard": {
+      "get": {
+        "description": "Gamified public ranking of top CO2 savers (Feature 20 improvement).\n\nAggregates saved_kg per user across completed rides they drove OR joined,\nthen returns the top 10. The requesting user's own rank is also included\nif they fall outside the top 10.",
+        "operationId": "get_eco_leaderboard_api_eco_leaderboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Eco Leaderboard",
+        "tags": [
+          "Eco Tracker"
+        ]
+      }
+    },
+    "/api/eco/stats": {
+      "get": {
+        "description": "Aggregate eco stats for the current user across their completed rides.",
+        "operationId": "get_eco_stats_api_eco_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Eco Stats",
+        "tags": [
+          "Eco Tracker"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check"
+      }
+    },
+    "/api/history": {
+      "get": {
+        "description": "Past trips, newest first, across both roles.",
+        "operationId": "list_history_api_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|driver|passenger)$",
+              "title": "Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "completed",
+              "pattern": "^(completed|all)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List History",
+        "tags": [
+          "Ride History & Receipts"
+        ]
+      }
+    },
+    "/api/history/summary": {
+      "get": {
+        "description": "Lifetime totals across both roles — spent as a rider, earned as a driver.",
+        "operationId": "history_summary_api_history_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "History Summary",
+        "tags": [
+          "Ride History & Receipts"
+        ]
+      }
+    },
+    "/api/history/{ride_id}/receipt": {
+      "get": {
+        "description": "Full receipt for one ride. Participants only.",
+        "operationId": "get_receipt_api_history__ride_id__receipt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Receipt",
+        "tags": [
+          "Ride History & Receipts"
+        ]
+      }
+    },
+    "/api/history/{ride_id}/receipt.pdf": {
+      "get": {
+        "description": "The same receipt as a downloadable PDF. Participants only.",
+        "operationId": "get_receipt_pdf_api_history__ride_id__receipt_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Receipt Pdf",
+        "tags": [
+          "Ride History & Receipts"
+        ]
+      }
+    },
+    "/api/reviews": {
+      "post": {
+        "description": "Leave a 1-5 star review with an optional comment, after a completed ride.",
+        "operationId": "create_review_api_reviews_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Review",
+        "tags": [
+          "Driver Rating & Review"
+        ]
+      }
+    },
+    "/api/reviews/driver/{driver_id}": {
+      "get": {
+        "description": "Public profile rating: average, star histogram and recent comments.",
+        "operationId": "driver_reviews_api_reviews_driver__driver_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "driver_id",
+            "required": true,
+            "schema": {
+              "title": "Driver Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Driver Reviews",
+        "tags": [
+          "Driver Rating & Review"
+        ]
+      }
+    },
+    "/api/reviews/me": {
+      "get": {
+        "description": "Reviews this user has received, plus their average.",
+        "operationId": "my_reviews_api_reviews_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Reviews",
+        "tags": [
+          "Driver Rating & Review"
+        ]
+      }
+    },
+    "/api/reviews/pending": {
+      "get": {
+        "description": "Completed rides where this user still owes the driver a review.\n\nDrives the post-ride prompt: the app should ask once, then stop asking.",
+        "operationId": "pending_reviews_api_reviews_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Reviews",
+        "tags": [
+          "Driver Rating & Review"
+        ]
+      }
+    },
+    "/api/rides": {
+      "get": {
+        "description": "List rides: mine (as driver/passenger) + open available rides.",
+        "operationId": "list_rides_api_rides_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "female_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Female Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Rides",
+        "tags": [
+          "Rides"
+        ]
+      },
+      "post": {
+        "description": "Driver creates a new ride with multi-stop and scheduling support.",
+        "operationId": "create_ride_api_rides_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/hotspots": {
+      "get": {
+        "description": "Returns categorized campus pickup hotspots and transit points.",
+        "operationId": "get_hotspots_api_rides_hotspots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Hotspots",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/match": {
+      "get": {
+        "description": "Smart Matching Algorithm:\nMatches riders with open rides heading to their destination or passing through their intermediate stops.\nSupports proximity zone matching, class schedule time-flex matching, and female-only filtering.",
+        "operationId": "match_rides_api_rides_match_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pickup",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pickup"
+            }
+          },
+          {
+            "in": "query",
+            "name": "destination",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dropoff",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dropoff"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scheduled_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scheduled_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "class_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Class Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "female_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Female Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Match Rides",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}": {
+      "get": {
+        "description": "Ride detail including passenger stops and multi-stop progress.",
+        "operationId": "get_ride_api_rides__ride_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/accept/{passenger_id}": {
+      "post": {
+        "description": "Driver accepts a passenger's ride request.",
+        "operationId": "accept_passenger_api_rides__ride_id__accept__passenger_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "passenger_id",
+            "required": true,
+            "schema": {
+              "title": "Passenger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Passenger",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/cancel": {
+      "post": {
+        "description": "Driver cancels the whole ride; a passenger cancels only their own seat.",
+        "operationId": "cancel_ride_api_rides__ride_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/cancellation-policy": {
+      "get": {
+        "description": "Preview what cancelling costs, so the UI can warn before anything happens.",
+        "operationId": "cancellation_policy_api_rides__ride_id__cancellation_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancellation Policy",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/end": {
+      "post": {
+        "description": "Driver ends the ride — computes distance (tracking points or estimate) for eco tracking.",
+        "operationId": "end_ride_api_rides__ride_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndRideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/join": {
+      "post": {
+        "description": "Rider requests a seat on a ride, optionally specifying their pickup and drop-off stops.",
+        "operationId": "join_ride_api_rides__ride_id__join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/messages": {
+      "get": {
+        "description": "Ride Chat history (participants only).",
+        "operationId": "get_ride_messages_api_rides__ride_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ride Messages",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/split": {
+      "get": {
+        "description": "Ride Cost Splitter — total = base_fare x surge; split by SEATS among accepted\npassengers, with whole-taka largest-remainder rounding so shares sum exactly\nto `total`.",
+        "operationId": "ride_cost_split_api_rides__ride_id__split_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ride Cost Split",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/start": {
+      "post": {
+        "description": "Driver starts the ride.",
+        "operationId": "start_ride_api_rides__ride_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Ride",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/rides/{ride_id}/stops/{stop_id}/status": {
+      "post": {
+        "description": "Driver updates progress of a stop (pending, reached, departed).",
+        "operationId": "update_stop_status_api_rides__ride_id__stops__stop_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stop_id",
+            "required": true,
+            "schema": {
+              "title": "Stop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStopStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Stop Status",
+        "tags": [
+          "Rides"
+        ]
+      }
+    },
+    "/api/sos/alerts": {
+      "get": {
+        "description": "Admin: Get all SOS alerts.",
+        "operationId": "get_sos_alerts_api_sos_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Sos Alerts",
+        "tags": [
+          "SOS Alerts"
+        ]
+      }
+    },
+    "/api/sos/my-alerts": {
+      "get": {
+        "description": "Get current user's SOS alert history.",
+        "operationId": "get_my_sos_alerts_api_sos_my_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get My Sos Alerts",
+        "tags": [
+          "SOS Alerts"
+        ]
+      }
+    },
+    "/api/sos/trigger": {
+      "post": {
+        "description": "Trigger an SOS alert — notifies trusted contacts and campus security.",
+        "operationId": "trigger_sos_api_sos_trigger_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SOSRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trigger Sos",
+        "tags": [
+          "SOS Alerts"
+        ]
+      }
+    },
+    "/api/sos/{alert_id}/resolve": {
+      "patch": {
+        "description": "Admin: Resolve an SOS alert.",
+        "operationId": "resolve_sos_api_sos__alert_id__resolve_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Sos",
+        "tags": [
+          "SOS Alerts"
+        ]
+      }
+    },
+    "/api/surge/current": {
+      "get": {
+        "description": "Current surge multiplier + label based on the hour and live ride volume.\n\nImprovement note:\n- The surge state remains a lightweight live demand indicator for the ride planner view.",
+        "operationId": "get_current_surge_api_surge_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Current Surge",
+        "tags": [
+          "Peak Hour Surge"
+        ]
+      }
+    },
+    "/api/surge/schedule": {
+      "get": {
+        "description": "Hourly surge schedule (0-23) — used to warn users of upcoming peak windows.\n\nFix (PROJECT_PLAN.md §6.2): the live active-ride bump now applies ONLY to the\ncurrent hour. Other hours show their seeded baseline so the schedule reads as a\nproper forecast instead of shifting all 24 hours by the same amount.",
+        "operationId": "get_surge_schedule_api_surge_schedule_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Surge Schedule",
+        "tags": [
+          "Peak Hour Surge"
+        ]
+      }
+    },
+    "/api/tracking/active": {
+      "get": {
+        "description": "Get the user's currently active tracking session, if any.",
+        "operationId": "get_active_session_api_tracking_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Active Session",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/tracking/point": {
+      "post": {
+        "description": "Add a GPS coordinate point to an active tracking session.",
+        "operationId": "add_tracking_point_api_tracking_point_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingPointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Tracking Point",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/tracking/session": {
+      "post": {
+        "description": "Start a new GPS tracking session.",
+        "operationId": "start_tracking_session_api_tracking_session_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Tracking Session",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/tracking/session/{session_id}": {
+      "get": {
+        "description": "Get all tracking points for a session (owner only — fix: was leaking any session).",
+        "operationId": "get_session_points_api_tracking_session__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Points",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/tracking/session/{session_id}/stop": {
+      "post": {
+        "description": "Stop an active tracking session.\n\nImprovement note:\n- Keeps the shared live GPS tracking flow aligned with the expedition of ride monitoring and trusted-contact sharing.",
+        "operationId": "stop_tracking_session_api_tracking_session__session_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Tracking Session",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/tracking/share/{share_token}": {
+      "get": {
+        "description": "Public: Get tracking data via share token (for trusted contacts).",
+        "operationId": "get_shared_tracking_api_tracking_share__share_token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "share_token",
+            "required": true,
+            "schema": {
+              "title": "Share Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Shared Tracking",
+        "tags": [
+          "GPS Tracking"
+        ]
+      }
+    },
+    "/api/wallet": {
+      "get": {
+        "description": "Balance plus the 10 most recent ledger entries.",
+        "operationId": "get_wallet_api_wallet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Wallet",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/payment/{payment_id}": {
+      "get": {
+        "description": "Reconciliation: ask the gateway what really happened to an interrupted payment.",
+        "operationId": "payment_status_api_wallet_payment__payment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Payment Status",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/reconcile": {
+      "get": {
+        "description": "Assert the cached balance still equals the append-only ledger.\n\nA mismatch means a bug wrote one without the other, and is worth surfacing\nloudly rather than letting it drift silently.",
+        "operationId": "reconcile_api_wallet_reconcile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reconcile",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/topup": {
+      "post": {
+        "description": "Step 1+2: grant token, then create the payment and hand back a checkout URL.",
+        "operationId": "start_topup_api_wallet_topup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Topup",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/topup/execute": {
+      "post": {
+        "description": "Step 4: the ONLY place a top-up can be credited.\n\nIdempotent twice over: the gateway returns the same trxID on re-execute, and\nuq_transactions_payment stops a second ledger row for the same paymentID.",
+        "operationId": "execute_topup_api_wallet_topup_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Topup",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/transactions": {
+      "get": {
+        "description": "Full ledger history — also the data source for receipts (#10).",
+        "operationId": "list_transactions_api_wallet_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Transactions",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/api/wallet/withdraw": {
+      "post": {
+        "description": "Cash out to bKash — the other edge of the prepaid model.",
+        "operationId": "withdraw_api_wallet_withdraw_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw",
+        "tags": [
+          "Wallet & bKash"
+        ]
+      }
+    },
+    "/bkash/checkout/{payment_id}": {
+      "get": {
+        "description": "The gateway's hosted PIN screen.",
+        "operationId": "checkout_page_bkash_checkout__payment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Error",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Checkout Page",
+        "tags": [
+          "bKash (simulated)"
+        ]
+      }
+    },
+    "/bkash/checkout/{payment_id}/cancel": {
+      "post": {
+        "description": "User backed out on the gateway's page.",
+        "operationId": "cancel_bkash_checkout__payment_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "bKash (simulated)"
+        ]
+      }
+    },
+    "/bkash/checkout/{payment_id}/confirm": {
+      "post": {
+        "description": "User authorised on the gateway. Redirect back to the merchant.\n\nNote what this does NOT do: it never credits anything. It only marks the\npayment authorised and bounces the browser home with a status parameter the\nmerchant is expected to distrust and verify.",
+        "operationId": "confirm_bkash_checkout__payment_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_confirm_bkash_checkout__payment_id__confirm_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "bKash (simulated)"
+        ]
+      }
+    },
+    "/bkash/test-accounts": {
+      "get": {
+        "description": "Documents the deterministic outcomes, mirroring bKash's sandbox test numbers.",
+        "operationId": "test_accounts_bkash_test_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Accounts",
+        "tags": [
+          "bKash (simulated)"
+        ]
+      }
+    }
+  }
+}

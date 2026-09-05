@@ -4,6 +4,12 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle } from
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+const CARTO_DARK_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const cartoBasemapKey = process.env.NEXT_PUBLIC_CARTO_BASEMAP_KEY;
+const cartoTileUrl = cartoBasemapKey
+  ? `${CARTO_DARK_TILES}?key=${encodeURIComponent(cartoBasemapKey)}`
+  : CARTO_DARK_TILES;
+
 // Dynamic marker creators for categorized hotspots
 const createDivIcon = (color: string, ringColor: string, size = 14) => {
   return new L.DivIcon({
@@ -42,12 +48,7 @@ export interface HotspotItem {
 const DEFAULT_HOTSPOTS: HotspotItem[] = [
   { id: "gate 1", name: "Gate 1 (Main Entrance - Pragati Sarani)", category: "campus_gate", lat: 23.7745, lng: 90.4255, description: "BRACU Main Gate 1 & Front Plaza on Bir Uttam Rafiqul Islam Ave", popular: true },
   { id: "gate 2", name: "Gate 2 (Hatirjheel / West Walkway)", category: "campus_gate", lat: 23.7741, lng: 90.4245, description: "West entrance facing Hatirjheel promenade and link road", popular: true },
-  { id: "gate 3", name: "Gate 3 (Aftabnagar / South Gate)", category: "campus_gate", lat: 23.7738, lng: 90.4262, description: "South student drop-off & parking gate near Aftabnagar link" },
-  { id: "academic building", name: "BRACU Main Academic Complex", category: "academic", lat: 23.7746, lng: 90.4252, description: "13-story green sustainable mega building & lecture halls", popular: true },
-  { id: "library", name: "Ayesha Abed Library (Level 3-4)", category: "academic", lat: 23.7747, lng: 90.4250, description: "Central university library and quiet study commons", popular: true },
-  { id: "cafeteria", name: "Main Cafeteria & Food Court", category: "academic", lat: 23.7744, lng: 90.4251, description: "Spacious multi-cuisine food court & student lounge", popular: true },
-  { id: "auditorium", name: "BRACU Grand Auditorium & Gallery", category: "academic", lat: 23.7743, lng: 90.4254, description: "Central auditorium, multipurpose hall & exhibition gallery" },
-  { id: "sports complex", name: "Indoor Sports & Recreation Complex", category: "academic", lat: 23.7749, lng: 90.4253, description: "Indoor gymnasium, badminton courts & rooftop sports arena" },
+  { id: "gate 3", name: "Gate 3 (Aftabnagar / South Gate)", category: "campus_gate", lat: 23.7741, lng: 90.4256, description: "South student drop-off & parking gate near Aftabnagar link" },
   { id: "aftabnagar", name: "Aftabnagar Main Gate (Block A)", category: "transit_hub", lat: 23.7730, lng: 90.4280, description: "Across Pragati Sarani — major student residence hub & EWU link", popular: true },
   { id: "hatirjheel ghat", name: "Hatirjheel Merul Badda Water Taxi Ghat", category: "transit_hub", lat: 23.7725, lng: 90.4230, description: "Water taxi terminal connecting to FDC, Niketan, Gulshan-1 & Rampura", popular: true },
   { id: "rampura bridge", name: "Rampura Bridge / DIT Road", category: "transit_hub", lat: 23.7650, lng: 90.4240, description: "Major bus junction connecting to Malibagh, Kakrail, and South Dhaka", popular: true },
@@ -109,7 +110,7 @@ export default function TrackingMap({
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url={cartoTileUrl}
         />
 
         <MapUpdater center={center} follow={follow} onInteract={() => setFollow(false)} />
@@ -236,4 +237,3 @@ export default function TrackingMap({
     </div>
   );
 }
-
