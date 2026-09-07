@@ -535,7 +535,10 @@ def match_rides(user_id: str, source: str | None=None, pickup: str | None=None, 
            FROM rides r JOIN users u ON r.driver_id = u.id
            WHERE r.driver_id != ?
              AND r.status IN ('scheduled', 'active')
-             AND r.id NOT IN (SELECT ride_id FROM ride_passengers WHERE passenger_id = ?)
+             AND r.id NOT IN (
+                 SELECT ride_id FROM ride_passengers
+                 WHERE passenger_id = ? AND status IN ('requested', 'accepted')
+             )
              AND (r.female_only = 0 OR ? = 'female')
            ORDER BY r.created_at DESC""",
         (user_id, user_id, user["gender"])
@@ -567,7 +570,7 @@ def match_rides(user_id: str, source: str | None=None, pickup: str | None=None, 
         taken_seats = taken_map.get(ride_id, 0)
         available_seats = max(0, total_seats - taken_seats)
         if available_seats <= 0:
-            continueDomainError: a model failure without a FastAPI dependency. controllers/errors.py translates its status/detail into the existing {"detail": "..."} error response.
+            continue
 
         if female_only and not r["female_only"]:
             continue
@@ -718,7 +721,10 @@ def list_rides(user_id: str, female_only: bool=False):
         """SELECT r.*, u.name AS driver_name, u.id AS driver_id
            FROM rides r JOIN users u ON r.driver_id = u.id
            WHERE r.driver_id = ?
-              OR r.id IN (SELECT ride_id FROM ride_passengers WHERE passenger_id = ?)
+              OR r.id IN (
+                  SELECT ride_id FROM ride_passengers
+                  WHERE passenger_id = ? AND status IN ('requested', 'accepted')
+              )
            ORDER BY r.created_at DESC""",
         (user_id, user_id)
     ).fetchall()
@@ -727,7 +733,10 @@ def list_rides(user_id: str, female_only: bool=False):
            FROM rides r JOIN users u ON r.driver_id = u.id
            WHERE r.driver_id != ?
              AND r.status IN ('scheduled', 'active')
-             AND r.id NOT IN (SELECT ride_id FROM ride_passengers WHERE passenger_id = ?)
+             AND r.id NOT IN (
+                 SELECT ride_id FROM ride_passengers
+                 WHERE passenger_id = ? AND status IN ('requested', 'accepted')
+             )
              AND (r.female_only = 0 OR ? = 'female')"""
     params = [user_id, user_id, user["gender"]]
 
@@ -749,6 +758,13 @@ def list_rides(user_id: str, female_only: bool=False):
            WHERE status IN ('requested', 'accepted') GROUP BY ride_id"""
     ).fetchall()
     taken_map = {p["ride_id"]: p["taken"] for p in passengers}
+
+    my_seats = conn.execute(
+        """SELECT ride_id, status FROM ride_passengers
+           WHERE passenger_id = ? AND status IN ('requested', 'accepted')""",
+        (user_id,),
+    ).fetchall()
+    my_seat_map = {row["ride_id"]: row["status"] for row in my_seats}
 
     conn.close()
 
@@ -773,6 +789,7 @@ def list_rides(user_id: str, female_only: bool=False):
             "created_at": ride["created_at"],
             "female_only": bool(ride["female_only"]),
             "stops": ride_stops_map.get(ride["id"], []),
+            "my_seat_status": my_seat_map.get(ride["id"]),
         }
 
     return {

@@ -73,6 +73,7 @@ interface RideInfo {
   female_only?: boolean;
   stops?: RideStop[];
   stop_details?: StopInfo[];
+  my_seat_status?: "requested" | "accepted" | "completed" | "cancelled" | null;
 }
 
 interface MatchResult {
@@ -527,12 +528,21 @@ export default function RidesPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        const cancelledId = cancelTarget.id;
+        const cancelledAsDriver = cancelQuote?.role === "driver";
         showNotice(data.penalty_charged > 0 || data.uncollected ? "error" : "success", data.message);
         setCancelTarget(null);
         setCancelQuote(null);
+        setRides(prev => ({
+          mine: cancelledAsDriver
+            ? prev.mine.map(r => r.id === cancelledId ? { ...r, status: "cancelled" } : r)
+            : prev.mine.filter(r => r.id !== cancelledId),
+          available: prev.available,
+        }));
         reload();
       } else {
-        showNotice("error", data.detail || "Could not cancel the ride");
+        const detail = typeof data.detail === "string" ? data.detail : "Could not cancel the ride";
+        showNotice("error", detail);
       }
     } catch {
       showNotice("error", "Network error - could not cancel the ride");
@@ -589,6 +599,12 @@ export default function RidesPage() {
     const isDriver = me && ride.driver_id === me.id;
     const isParticipant = mine || isDriver;
     const chatOpen = isParticipant && (ride.status === "active" || ride.status === "scheduled");
+    const seatIsActive =
+      Boolean(isDriver) ||
+      ride.my_seat_status === "requested" ||
+      ride.my_seat_status === "accepted" ||
+      Boolean(!isDriver && mine && ride.my_seat_status == null);
+    const canCancel = Boolean(isParticipant && seatIsActive && (ride.status === "scheduled" || ride.status === "active"));
 
     return (
       <div
@@ -741,8 +757,8 @@ export default function RidesPage() {
               🗺️ Live Map Tracking
             </Link>
           )}
-          {/* Feature 18: only offered while the ride can still be cancelled */}
-          {isParticipant && (ride.status === "scheduled" || ride.status === "active") && (
+          {/* Feature 18: only offered while this user still has a live seat / ride */}
+          {canCancel && (
             <button className="btn btn-sm btn-danger" onClick={() => openCancelModal(ride)}>
               ✖ {isDriver ? "Cancel Ride" : "Cancel My Seat"}
             </button>

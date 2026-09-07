@@ -101,7 +101,7 @@ export default function TrackingMap({
   const [follow, setFollow] = useState(true);
 
   return (
-    <div className="map-container" style={{ position: "relative", width: "100%", height: "100%", minHeight: 380, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+    <div className="map-container" style={{ position: "relative", zIndex: 1, isolation: "isolate", width: "100%", height: "100%", minHeight: 380, borderRadius: "var(--radius-md)", overflow: "hidden" }}>
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={15}

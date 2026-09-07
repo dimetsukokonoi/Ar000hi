@@ -353,6 +353,41 @@ def test_ride_cancellation(actors):
     assert request("GET", f"/api/rides/{ride}", driver).json()["status"] == "cancelled"
 
 
+def test_passenger_seat_cancellation_leaves_the_ride(actors):
+    driver = actors["driver"]
+    rider = actors["rider"]
+    ride = request(
+        "POST",
+        "/api/rides",
+        driver,
+        json={
+            "source": "Badda",
+            "destination": "Gate 1",
+            "base_fare": 80,
+        },
+    ).json()["ride_id"]
+    request("POST", f"/api/rides/{ride}/join", rider, json={"seats": 1})
+
+    listed = request("GET", "/api/rides", rider).json()
+    assert any(item["id"] == ride for item in listed["mine"])
+    assert all(item["id"] != ride for item in listed["available"])
+
+    request("GET", f"/api/rides/{ride}/cancellation-policy", rider)
+    cancelled = request(
+        "POST", f"/api/rides/{ride}/cancel", rider, json={"reason": "Class moved"}
+    ).json()
+    assert cancelled["cancelled"] == "seat"
+    assert request("GET", f"/api/rides/{ride}", driver).json()["status"] == "scheduled"
+
+    listed = request("GET", "/api/rides", rider).json()
+    assert all(item["id"] != ride for item in listed["mine"])
+    assert any(item["id"] == ride for item in listed["available"])
+
+    request(
+        "POST", f"/api/rides/{ride}/cancel", rider, json={"reason": "again"}, status=403
+    )
+
+
 def test_bad_websocket_token():
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect("/ws/chat/missing?token=invalid") as ws:

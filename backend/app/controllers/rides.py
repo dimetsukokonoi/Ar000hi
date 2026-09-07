@@ -1,4 +1,4 @@
-sx"""Rides controller: HTTP input, authentication and model dispatch."""
+"""Rides controller: HTTP input, authentication and model dispatch."""
 
 from fastapi import APIRouter, Depends
 from app.controllers.dependencies import get_current_user_id
