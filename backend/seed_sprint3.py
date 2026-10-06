@@ -6,6 +6,7 @@ from datetime import datetime as dt, timedelta
 import sqlite3
 import os
 import sys
+# Add the parent directory to sys.path to import app modules
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from app.database import get_db, init_db

@@ -5,7 +5,7 @@
 “Arooohi uses API-based web MVC. React pages are the View, FastAPI request
 handlers are the Controllers, and Python business rules plus SQLite persistence
 form the Model. Controllers authenticate and validate incoming requests, call
-models, and return results. React displays those results. Models do not import
+models, & return results. React displays those results. Models do not import
 FastAPI or depend on the user interface.”
 
 This is a separate React frontend with an MVC backend, not a traditional

@@ -14,7 +14,7 @@ API URLs are unchanged. See the [MVC demonstration guide](../MVC_ARCHITECTURE.md
 
 All endpoints return JSON. Errors return `{"detail": "..."}` with 4xx/5xx status.
 
----
+----
 
 ## 1. Trusted Contacts  (`/api/contacts`)
 
